@@ -96,7 +96,11 @@ CaptionWindow::CaptionWindow() {
 			game.getFloatWindow().push(TranslatableText(L"hbp.float.freshCanvas").getRenderableString());
 		}
 	};
-	options->mouseClick = [](Widget&, const MouseButtonCode code) { if (static_cast<int>(MouseButtonCodeEnum::MBC_R_DOWN) & code) { game.tasks.pushThis(renderer.resizeReloadBitmap); } };
+	options->mouseClick = [](Widget&, const MouseButtonCode code) { if (static_cast<int>(MouseButtonCodeEnum::MBC_R_CHANGE) & code) {
+		Logger.info(L"try resize");
+		renderer.resize(renderer.getSyncWidth(), renderer.getSyncHeight());
+		// game.tasks.pushThis(renderer.resizeReloadBitmap);
+	} };
 	options->absolute();
 	options->backgroundColor.hover = 0xffcccccc;
 	options->backgroundColor.active = 0;

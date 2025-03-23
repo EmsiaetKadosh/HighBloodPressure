@@ -51,31 +51,46 @@ void Renderer::initialize() noexcept {
 	SetBkMode(assistDC, TRANSPARENT);
 	RECT rect;
 	GetWindowRect(MainWindowHandle, &rect);
-	resize(rect.right - rect.left, rect.bottom - rect.top);
+	// resize(rect.right - rect.left, rect.bottom - rect.top);
+}
+
+/**
+ * 有一些事情必须在当前线程（renderThread）做，否则可能会有问题。
+ * 虽然执行到此处程序必然是已经准备终止了，但是还是遵守一下。
+ */
+void Renderer::finalize() noexcept {
+	if (MainDC) DeleteDC(MainDC), MainDC = nullptr;
+	if (assistDC) DeleteDC(assistDC), assistDC = nullptr;
+	if (canvasDC) DeleteDC(canvasDC), canvasDC = nullptr;
+	if (resizeCopyDC) DeleteDC(resizeCopyDC), resizeCopyDC = nullptr;
+	if (canvasBitmap) DeleteObject(canvasBitmap), canvasBitmap = nullptr;
+	if (assistBitmap) DeleteObject(assistBitmap), assistBitmap = nullptr;
+	if (resizeCopyBitmap) DeleteObject(resizeCopyBitmap), resizeCopyBitmap = nullptr;
 }
 
 void Renderer::resize(const int width, const int height) noexcept(false) {
-	if (windowWidth == width && windowHeight == height) return;
+	const bool flag = windowWidth != width || windowHeight != height;
 	windowWidth = width;
 	windowHeight = height;
 	std::atomic_thread_fence(std::memory_order_seq_cst);
-	deleteObject(canvasBitmap);
-	canvasBitmap = nullptr;
+	const HBITMAP canvas = canvasBitmap, assist = assistBitmap;
 	canvasBitmap = CreateCompatibleBitmap(MainDC, width, height);
-	SelectObject(canvasDC, canvasBitmap);
-	deleteObject(assistBitmap);
-	assistBitmap = nullptr;
 	assistBitmap = CreateCompatibleBitmap(assistDC, width, height);
+	SelectObject(canvasDC, canvasBitmap);
 	SelectObject(assistDC, assistBitmap);
+	deleteObject(canvas);
+	deleteObject(assist);
 	if (!canvasBitmap || !assistBitmap) {
 		if (!resizeReloadBitmap.getContainer()) {
 			game.tasks.pushThis(resizeReloadBitmap);
 			Logger.debug(L"Failed to create bitmap. Pushed task.");
 		}
 	} else Logger.debug(L"Successfully resized bitmap");
-	interactSettings.setUiScale(static_cast<double>(height) / 2160.);
-	game.handleResize();
-	fontManager.resize(width, height);
+	if (flag) {
+		interactSettings.setUiScale(static_cast<double>(height) / 2160.);
+		game.handleResize();
+		fontManager.resize(width, height);
+	}
 }
 
 void Renderer::syncSize(const int width, const int height) noexcept(false) {

@@ -5,8 +5,8 @@
 long __stdcall UnhandledExceptionHandler(PEXCEPTION_POINTERS exception) {
 	isRunning = false;
 	Logger.error(L"Unhandled exception handler called");
-	const auto ContextRecord = exception->ContextRecord;
-	const auto ExceptionRecord = exception->ExceptionRecord;
+	auto* const ContextRecord = exception->ContextRecord;
+	auto* const ExceptionRecord = exception->ExceptionRecord;
 	Logger.print(
 		std::hex,
 		L"Register parameter home addresses:"
@@ -263,11 +263,67 @@ long __stdcall UnhandledExceptionHandler(PEXCEPTION_POINTERS exception) {
 		L"\n      ", ExceptionRecord->ExceptionInformation[13],
 		L"\n      ", ExceptionRecord->ExceptionInformation[14]
 	);
-
+	_wsystem(L"pause");
 	return EXCEPTION_EXECUTE_HANDLER;
 }
 
+using Time = std::chrono::time_point<std::chrono::system_clock>;
+Time lastTick = std::chrono::system_clock::now();
+
+void gameThread() {
+	try {
+		using namespace std::chrono;
+		using Time = time_point<system_clock>;
+		while (isRunning) {
+			const Time thisTime = system_clock::now();
+			if (thisTime - lastTick < milliseconds(interactSettings.constants.msPerTick)) {
+				Sleep(1);
+				continue;
+			}
+			game.tick();
+			renderer.tick();
+			lastTick = thisTime;
+		}
+	} catch (const Exception& e) { Logger.error(L"Game thread exception: " + e.getMessage()); }
+	catch (const std::exception& e) { Logger.error(L"Game thread exception: " + atow(e.what())); }
+	Logger.error(L"Game thread ended.");
+	isRunning = false;
+	DestroyWindow(MainWindowHandle);
+}
+
+void renderThread() {
+	try {
+		using namespace std::chrono;
+		using Time = time_point<system_clock>;
+		{
+			renderer.initialize();
+			RECT clientRect;
+			GetClientRect(MainWindowHandle, &clientRect);
+			renderer.resize(clientRect.right - clientRect.left, clientRect.bottom - clientRect.top);
+		}
+		Time lastRender = system_clock::now();
+		// bool _TestFlag = false;
+		while (isRunning) {
+			const Time thisTime = system_clock::now();
+			if (thisTime - lastRender < milliseconds(interactSettings.constants.msPerRender)) {
+				Sleep(1);
+				// if (_TestFlag) _TestFlag = false, Logger.debug(L"Render Test: " + std::to_wstring((thisTime - lastRender) / milliseconds(1)));
+				continue;
+			}
+			// _TestFlag = true;
+			game.render(nRange(static_cast<double>((thisTime - lastTick).count()) / static_cast<double>(interactSettings.constants.msPerRender), 0.0, 1.0));
+			lastRender = thisTime;
+		}
+	} catch (const Exception& e) { Logger.log(L"Render thread exception: " + e.getMessage()); }
+	catch (const std::exception& e) { Logger.log(L"Render thread exception: " + atow(e.what())); }
+	Logger.error(L"Render thread ended.");
+	isRunning = false;
+	DestroyWindow(MainWindowHandle);
+	renderer.finalize();
+}
+
 LRESULT __stdcall WndProc(const HWND hwnd, const UINT uMsg, const WPARAM wParam, const LPARAM lParam) {
+	// Logger.trace(L"Receive message: " + std::to_wstring(uMsg));
 	switch (uMsg) {
 			[[likely]]
 		case WM_PAINT: {
@@ -283,7 +339,8 @@ LRESULT __stdcall WndProc(const HWND hwnd, const UINT uMsg, const WPARAM wParam,
 			ScreenToClient(hwnd, &point);
 			const int xPos = point.x;
 			const int yPos = point.y;
-			if (renderer.windowSize != SIZE_MAXIMIZED) {
+			const int zoomed = IsZoomed(hwnd);
+			if (zoomed) {
 				if (xPos < interactSettings.actual.marginWidth) {
 					if (yPos < interactSettings.actual.marginWidth) return HTTOPLEFT;
 					if (renderer.getSyncHeight() - yPos < interactSettings.actual.marginWidth) return HTBOTTOMLEFT;
@@ -296,7 +353,7 @@ LRESULT __stdcall WndProc(const HWND hwnd, const UINT uMsg, const WPARAM wParam,
 				}
 			}
 			if (yPos < interactSettings.actual.marginWidth) return HTTOP;
-			if (renderer.windowSize != SIZE_MAXIMIZED && renderer.getSyncHeight() - yPos < interactSettings.actual.marginWidth) return HTBOTTOM;
+			if (zoomed && renderer.getSyncHeight() - yPos < interactSettings.actual.marginWidth) return HTBOTTOM;
 			if (yPos < interactSettings.actual.captionHeight) return HTCAPTION;
 			LRESULT lr = 0;
 			DwmDefWindowProc(hwnd, uMsg, wParam, lParam, &lr);
@@ -320,11 +377,9 @@ LRESULT __stdcall WndProc(const HWND hwnd, const UINT uMsg, const WPARAM wParam,
 			switch (wParam) {
 				case SIZE_RESTORED:
 				case SIZE_MAXIMIZED:
-					renderer.resize(
-						renderer.getSyncWidth(),
-						renderer.getSyncHeight()
-					);
-					PostMessageW(hwnd, WM_EXITSIZEMOVE, 0, 0);
+					if (!renderer.resizeTask.getContainer()) game.tasks.pushThis(renderer.resizeTask);
+					renderer.resizeEnd();
+					interactSettings.setScreenScale(static_cast<double>(GetSystemMetrics(SM_CYSCREEN)) / 2160.);
 					break;
 				case SIZE_MINIMIZED:
 				case SIZE_MAXSHOW:
@@ -332,7 +387,6 @@ LRESULT __stdcall WndProc(const HWND hwnd, const UINT uMsg, const WPARAM wParam,
 				default:
 					break;
 			}
-			renderer.windowSize = static_cast<byte>(wParam);
 			break;
 		case WM_KEYDOWN:
 			interactManager.update(static_cast<int>(wParam), true);
@@ -422,8 +476,8 @@ LRESULT __stdcall WndProc(const HWND hwnd, const UINT uMsg, const WPARAM wParam,
 				return 0;
 			}
 		case WM_EXITSIZEMOVE:
+		case WM_APP_EXITSIZEMOVE:
 			renderer.resizeEnd();
-			renderer.resize(renderer.getSyncWidth(), renderer.getSyncHeight());
 			interactSettings.setScreenScale(static_cast<double>(GetSystemMetrics(SM_CYSCREEN)) / 2160.);
 			break;
 			[[unlikely]]
@@ -432,8 +486,7 @@ LRESULT __stdcall WndProc(const HWND hwnd, const UINT uMsg, const WPARAM wParam,
 			isRunning = false;
 			return 0;
 			[[unlikely]]
-		case WM_CREATE:
-			SetWindowPos(hwnd, nullptr, 0, 0, 0, 0, SWP_FRAMECHANGED | SWP_NOSIZE | SWP_NOMOVE | SWP_NOZORDER | SWP_NOOWNERZORDER);
+		case WM_APP_GAMESTART:
 			renderer.resizeEnd();
 			break;
 		default:
@@ -451,66 +504,17 @@ LRESULT __stdcall HookProc(const int code, const WPARAM wParam, const LPARAM lPa
 		case WM_LBUTTONUP:
 		case WM_NCLBUTTONUP:
 			PostMessageW(MainWindowHandle, WM_APP_LBUTTONUP, p->wParam, p->lParam);
-			Logger.info(wParam ? L"[Hook] LButtonUp    (Removed)" : L"[Hook] LButtonUp");
+			Logger.trace(wParam ? L"[Hook] LButtonUp    (Removed)" : L"[Hook] LButtonUp");
 			return 0;
 		case WM_MBUTTONDOWN:
 		case WM_NCMBUTTONDOWN:
 			PostMessageW(MainWindowHandle, WM_APP_MBUTTONDOWN, p->wParam, p->lParam);
-			Logger.info(wParam ? L"[Hook] MButtonDown  (Removed)" : L"[Hook] MButtonDown");
+			Logger.trace(wParam ? L"[Hook] MButtonDown  (Removed)" : L"[Hook] MButtonDown");
 			return 0;
 		default:
 			break;
 	}
 	return CallNextHookEx(nullptr, code, wParam, lParam);
-}
-
-using Time = std::chrono::time_point<std::chrono::system_clock>;
-Time lastTick = std::chrono::system_clock::now();
-
-void gameThread() {
-	try {
-		using namespace std::chrono;
-		using Time = time_point<system_clock>;
-		while (isRunning) {
-			const Time thisTime = system_clock::now();
-			if (thisTime - lastTick < milliseconds(interactSettings.constants.msPerTick)) {
-				Sleep(1);
-				continue;
-			}
-			game.tick();
-			renderer.tick();
-			lastTick = thisTime;
-		}
-	} catch (const Exception& e) { Logger.error(L"Game thread exception: " + e.getMessage()); }
-	catch (const std::exception& e) { Logger.error(L"Game thread exception: " + atow(e.what())); }
-	Logger.error(L"Game thread ended.");
-	isRunning = false;
-	DestroyWindow(MainWindowHandle);
-}
-
-void renderThread() {
-	try {
-		using namespace std::chrono;
-		using Time = time_point<system_clock>;
-		renderer.initialize();
-		Time lastRender = system_clock::now();
-		// bool _TestFlag = false;
-		while (isRunning) {
-			const Time thisTime = system_clock::now();
-			if (thisTime - lastRender < milliseconds(interactSettings.constants.msPerRender)) {
-				Sleep(1);
-				// if (_TestFlag) _TestFlag = false, Logger.debug(L"Render Test: " + std::to_wstring((thisTime - lastRender) / milliseconds(1)));
-				continue;
-			}
-			// _TestFlag = true;
-			game.render(nRange(static_cast<double>((thisTime - lastTick).count()) / static_cast<double>(interactSettings.constants.msPerRender), 0.0, 1.0));
-			lastRender = thisTime;
-		}
-	} catch (const Exception& e) { Logger.log(L"Render thread exception: " + e.getMessage()); }
-	catch (const std::exception& e) { Logger.log(L"Render thread exception: " + atow(e.what())); }
-	Logger.error(L"Render thread ended.");
-	isRunning = false;
-	DestroyWindow(MainWindowHandle);
 }
 
 int __stdcall wWinMain(const HINSTANCE hInstance, const HINSTANCE, [[maybe_unused]] const LPWSTR lpCmdLine, [[maybe_unused]] const int nShowCmd) {
@@ -535,8 +539,7 @@ int __stdcall wWinMain(const HINSTANCE hInstance, const HINSTANCE, [[maybe_unuse
 	if (!RegisterClassExW(&wc)) return FALSE;
 	if (!SetProcessDpiAwarenessContext(DPI_AWARENESS_CONTEXT_PER_MONITOR_AWARE)) Logger.print(L"SetProcessDpiAwarenessContext failed. LastError:", GetLastError());
 	MainInstance = hInstance;
-	MainWindowHandle = CreateWindowExW(0, wc.lpszClassName, wc.lpszClassName, WS_OVERLAPPEDWINDOW, CW_USEDEFAULT, CW_USEDEFAULT, CW_USEDEFAULT, CW_USEDEFAULT, nullptr, nullptr, hInstance, nullptr);
-	SetWindowLongW(MainWindowHandle, GWL_STYLE, WS_VISIBLE | WS_MAXIMIZEBOX);
+	MainWindowHandle = CreateWindowExW(0, wc.lpszClassName, wc.lpszClassName, WS_VISIBLE | WS_MAXIMIZEBOX | WS_SIZEBOX, CW_USEDEFAULT, CW_USEDEFAULT, CW_USEDEFAULT, CW_USEDEFAULT, nullptr, nullptr, hInstance, nullptr);
 	constexpr MARGINS margins{
 		.cxLeftWidth = 0,
 		.cxRightWidth = 0,
@@ -544,9 +547,9 @@ int __stdcall wWinMain(const HINSTANCE hInstance, const HINSTANCE, [[maybe_unuse
 		.cyBottomHeight = 0
 	};
 	RemoveDefaultCaption(MainWindowHandle, &margins);
-	SetWindowLongW(MainWindowHandle, GWL_EXSTYLE, GetWindowLongW(MainWindowHandle, GWL_EXSTYLE) | WS_EX_LAYERED);
-	// SetLayeredWindowAttributes(MainWindowHandle, 0xffffff, 0xe0, LWA_COLORKEY | LWA_ALPHA);
-	SetLayeredWindowAttributes(MainWindowHandle, 0xffffff, 0, LWA_COLORKEY);
+	// SetWindowLongW(MainWindowHandle, GWL_EXSTYLE, GetWindowLongW(MainWindowHandle, GWL_EXSTYLE) | WS_EX_LAYERED);
+	// SetLayeredWindowAttributes(MainWindowHandle, 0xffffff, 0xe0, LWA_COLORKEY /* | LWA_ALPHA */);
+	SetWindowPos(MainWindowHandle, nullptr, 0, 0, 0, 0, SWP_FRAMECHANGED | SWP_NOSIZE | SWP_NOMOVE | SWP_NOZORDER | SWP_NOOWNERZORDER);
 	ShowWindow(MainWindowHandle, nShowCmd);
 	const HHOOK hook = SetWindowsHookW(WH_GETMESSAGE, HookProc);
 	const HACCEL hAccelTable = LoadAcceleratorsW(hInstance, MAKEINTRESOURCE(109));
@@ -572,6 +575,7 @@ int __stdcall wWinMain(const HINSTANCE hInstance, const HINSTANCE, [[maybe_unuse
 		GameThread = Thread(gameThread);
 		RenderThread = Thread(renderThread);
 	}
+	PostMessageW(MainWindowHandle, WM_APP_GAMESTART, 0, 0);
 	MSG msg = { nullptr };
 	while (GetMessageW(&msg, nullptr, 0, 0)) {
 		if (!TranslateAcceleratorW(msg.hwnd, hAccelTable, &msg)) {
@@ -591,6 +595,6 @@ int __stdcall wWinMain(const HINSTANCE hInstance, const HINSTANCE, [[maybe_unuse
 	{
 		fontManager.finalize(); // 似乎GDI有终止自动回收，所以此代码需要提前
 	}
-	_wsystem(L"pause");
+	// _wsystem(L"pause");
 	return static_cast<int>(msg.wParam);
 }

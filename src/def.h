@@ -62,6 +62,8 @@ using Function = std::function<F>;
 
 #define WM_APP_LBUTTONUP (WM_APP + 1)
 #define WM_APP_MBUTTONDOWN (WM_APP + 2)
+#define WM_APP_GAMESTART (WM_APP + 3)
+#define WM_APP_EXITSIZEMOVE (WM_APP + 4)
 
 #pragma comment(lib, "Msimg32.lib")
 #pragma comment(lib, "ws2_32.lib")
@@ -151,16 +153,19 @@ T* deallocating$(T* value, const String& stack) {
 }
 
 #ifndef __FUNCSIG__
-#define __FUNCSIG__ __FUNCTION__
+#define __FUNCSIG__ atow(__func__)
+#define __FUNCSIG__PACK__ + __FUNCSIG__ +
+#else
+#define __FUNCSIG__PACK__ __FUNCSIG__
 #endif
 
 #if __CARLBEKS_MEMORY__ > 3
-#define allocatedFor(val, ...) allocatedFor$(val, L"\n    From " __FUNCSIG__ "\n    At   " __FILE__ ":" _STL_STRINGIZE(__LINE__) __VA_OPT__(,) __VA_ARGS__)
+#define allocatedFor(val, ...) allocatedFor$(val, L"\n    From " __FUNCSIG__PACK__ L"\n    At   " __FILE__ ":" _STL_STRINGIZE(__LINE__) __VA_OPT__(,) __VA_ARGS__)
 #else
 #define allocatedFor(val, ...) allocatedFor$(val, L"" __VA_OPT__(,) __VA_ARGS__)
 #endif
 #if __CARLBEKS_MEMORY__ > 1
-#define deallocating(val) deallocating$(val, L"\n    From " __FUNCSIG__ "\n    At   " __FILE__ ":" _STL_STRINGIZE(__LINE__))
+#define deallocating(val) deallocating$(val, L"\n    From " __FUNCSIG__PACK__ L"\n    At   " __FILE__ ":" _STL_STRINGIZE(__LINE__))
 #else
 #define deallocating(val) deallocating$(val)
 #endif

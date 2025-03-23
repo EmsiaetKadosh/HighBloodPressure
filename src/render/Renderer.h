@@ -10,6 +10,7 @@
 #include "..\utils\Task.h"
 #include "..\interact\InteractManager.h"
 #include "..\game\world\Location.h"
+#include "..\utils\Chars.h"
 
 class Game;
 
@@ -93,10 +94,18 @@ class Renderer final : public ITickable {
 	bool isResizing = false; // 1
 
 public:
-	byte windowSize = 0; // 1, Windows: SIZE_***
-	byte reserved[5]{};
-	Task resizeReloadBitmap{
-		[this](Task& task) {
+	byte reserved[6]{}; // 5
+	Task resizeReloadBitmap{nullptr};
+	Task resizeTask{nullptr};
+
+private:
+	void gameStartRender() noexcept;
+	void gameEndRender() noexcept;
+
+public:
+	Renderer() {
+		Logger.put(L"Renderer created");
+		resizeReloadBitmap.func = [this](Task& task) {
 			Logger.info(L"Scheduled task: resize reload bitmap " + std::to_wstring(windowWidth) + L" * " + std::to_wstring(windowHeight));
 			if (!canvasBitmap) {
 				canvasBitmap = CreateCompatibleBitmap(MainDC, windowWidth, windowHeight);
@@ -111,27 +120,21 @@ public:
 				Logger.info(L"Successfully reload bitmap " + ptrtow(reinterpret_cast<QWORD>(canvasBitmap)) + L" " + ptrtow(reinterpret_cast<QWORD>(assistBitmap)));
 				this->resizeEnd();
 			}
-		}
-	};
-
-private:
-	void gameStartRender() noexcept;
-	void gameEndRender() noexcept;
-
-public:
-	Renderer() { Logger.put(L"Renderer created"); }
+		};
+		resizeTask.func = [this](Task& task) {
+			resize(getSyncWidth(), getSyncHeight());
+			task.pop();
+		};
+	}
 
 	~Renderer() override {
 		Logger.put(L"Renderer destroyed");
-		if (assistDC) DeleteDC(assistDC);
-		if (canvasDC) DeleteDC(canvasDC);
-		if (resizeCopyDC) DeleteDC(resizeCopyDC);
-		if (canvasBitmap) DeleteObject(canvasBitmap);
-		if (assistBitmap) DeleteObject(assistBitmap);
-		if (resizeCopyBitmap) DeleteObject(resizeCopyBitmap);
+		// finalize();
 	}
 
 	void initialize() noexcept;
+	void finalize() noexcept;
+
 	/**
 	 * 负责转发所有resize信息
 	 */
@@ -161,6 +164,7 @@ public:
 		resizeCopyBitmap = nullptr;
 		resizeCopyWidth = 0;
 		resizeCopyHeight = 0;
+		resize(syncWidth, syncHeight);
 	}
 
 	void deleteObject(HGDIOBJ obj) const noexcept {
@@ -168,12 +172,76 @@ public:
 		tempList.swap(failed);
 		for (List<HGDIOBJ>::const_iterator iter = tempList.cbegin(); iter != tempList.cend(); ++iter)
 			if (!DeleteObject(*iter)) {
-				Logger.error(L"DeleteObject failed again. Deleting: " + std::to_wstring(reinterpret_cast<QWORD>(*iter)));
-				failed.push_back(*iter);
+				Logger.error(L"DeleteObject failed again. Deleting: " + qwtowb16(reinterpret_cast<QWORD>(*iter)) + L", LastError: " + std::to_wstring(GetLastError()));
+				if (const unsigned int type = GetObjectType(obj); !type) Logger.info(L"DeleteObject failure: Invalid HGIDOBJ");
+				else {
+					switch (type) {
+						case OBJ_BITMAP:
+							Logger.info(L"DeleteObject failure: BITMAP");
+							break;
+						case OBJ_PEN:
+							Logger.info(L"DeleteObject failure: PEN");
+							break;
+						case OBJ_BRUSH:
+							Logger.info(L"DeleteObject failure: BRUSH");
+							break;
+						case OBJ_FONT:
+							Logger.info(L"DeleteObject failure: FONT");
+							break;
+						case OBJ_REGION:
+							Logger.info(L"DeleteObject failure: REGION");
+							break;
+						case OBJ_DC:
+							Logger.info(L"DeleteObject failure: DC");
+							break;
+						case OBJ_MEMDC:
+							Logger.info(L"DeleteObject failure: MEMDC");
+							break;
+						case OBJ_PAL:
+							Logger.info(L"DeleteObject failure: PAL");
+							break;
+						default:
+							Logger.info(L"DeleteObject failure: ? " + std::to_wstring(type));
+							break;
+					}
+					failed.push_back(*iter);
+				}
 			}
 		if (obj && !DeleteObject(obj)) {
-			failed.push_back(obj);
-			Logger.error(L"DeleteObject failed. Deleting: " + std::to_wstring(reinterpret_cast<QWORD>(obj)));
+			Logger.error(L"DeleteObject failed. Deleting: " + qwtowb16(reinterpret_cast<QWORD>(obj)) + L", LastError: " + std::to_wstring(GetLastError()));
+			if (const unsigned int type = GetObjectType(obj); !type) Logger.info(L"DeleteObject failure: Invalid HGIDOBJ");
+			else {
+				switch (type) {
+					case OBJ_BITMAP:
+						Logger.info(L"DeleteObject failure: BITMAP");
+						break;
+					case OBJ_PEN:
+						Logger.info(L"DeleteObject failure: PEN");
+						break;
+					case OBJ_BRUSH:
+						Logger.info(L"DeleteObject failure: BRUSH");
+						break;
+					case OBJ_FONT:
+						Logger.info(L"DeleteObject failure: FONT");
+						break;
+					case OBJ_REGION:
+						Logger.info(L"DeleteObject failure: REGION");
+						break;
+					case OBJ_DC:
+						Logger.info(L"DeleteObject failure: DC");
+						break;
+					case OBJ_MEMDC:
+						Logger.info(L"DeleteObject failure: MEMDC");
+						break;
+					case OBJ_PAL:
+						Logger.info(L"DeleteObject failure: PAL");
+						break;
+					default:
+						Logger.info(L"DeleteObject failure: ? " + std::to_wstring(type));
+						break;
+				}
+				failed.push_back(obj);
+			}
 		}
 	}
 
@@ -234,14 +302,14 @@ public:
 	void fillWorld(const Vector2D& from, const Vector2D& to, const unsigned int color) const {
 		RECT rect{};
 		Vector2D vector = (from - camera.getCurrentPosition()) * interactSettings.actual.mapScale;
-		rect.left = static_cast<long>(vector.getX());
+		rect.left = static_cast<long>(vector.getX()) + (windowWidth >> 1);
 		if (rect.left >= windowWidth) return;
-		rect.top = static_cast<long>(vector.getY());
+		rect.top = static_cast<long>(vector.getY()) + (windowHeight >> 1);
 		if (rect.top >= windowHeight) return;
 		vector = (to - camera.getCurrentPosition()) * interactSettings.actual.mapScale;
-		rect.right = static_cast<long>(vector.getX());
+		rect.right = static_cast<long>(vector.getX()) + (windowWidth >> 1);
 		if (rect.right < 0) return;
-		rect.bottom = static_cast<long>(vector.getY());
+		rect.bottom = static_cast<long>(vector.getY()) + (windowHeight >> 1);
 		if (rect.bottom < 0) return;
 		fill(&rect, color);
 	}
@@ -249,14 +317,14 @@ public:
 	void fillWorld(const Vector2D& from, const double blockWidth, const double blockHeight, const unsigned int color) const {
 		RECT rect{};
 		Vector2D vector = (from - camera.getCurrentPosition()) * interactSettings.actual.mapScale;
-		rect.left = static_cast<long>(vector.getX());
+		rect.left = static_cast<long>(vector.getX()) + (windowWidth >> 1);
 		if (rect.left >= windowWidth) return;
-		rect.top = static_cast<long>(vector.getY());
+		rect.top = static_cast<long>(vector.getY()) + (windowHeight >> 1);
 		if (rect.top >= windowHeight) return;
 		vector += Vector2D(blockWidth, blockHeight).multiply(interactSettings.actual.mapScale);
-		rect.right = static_cast<long>(vector.getX());
+		rect.right = static_cast<long>(vector.getX()) + (windowWidth >> 1);
 		if (rect.right < 0) return;
-		rect.bottom = static_cast<long>(vector.getY());
+		rect.bottom = static_cast<long>(vector.getY()) + (windowHeight >> 1);
 		if (rect.bottom < 0) return;
 		fill(&rect, color);
 	}
