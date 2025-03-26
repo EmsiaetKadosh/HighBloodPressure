@@ -65,6 +65,7 @@ public:
 class Renderer final : public ITickable {
 	friend class Game;
 	friend class Font;
+	friend LRESULT __stdcall WndProc(HWND hwnd, UINT uMsg, WPARAM wParam, LPARAM lParam);
 	inline static BLENDFUNCTION blendFunction = {
 		.BlendOp = AC_SRC_OVER, // Only
 		.BlendFlags = 0, // Must 0
@@ -92,15 +93,82 @@ class Renderer final : public ITickable {
 	int resizeCopyWidth = 0, resizeCopyHeight = 0; // 4 + 4
 	bool isRendering = false; // 1
 	bool isResizing = false; // 1
+	bool isResizeRequired = false; // 1
+	char refreshedHDC = -1;
 
 public:
-	byte reserved[6]{}; // 5
+	byte reserved[4]{}; // 4
 	Task resizeReloadBitmap{nullptr};
-	Task resizeTask{nullptr};
 
 private:
 	void gameStartRender() noexcept;
 	void gameEndRender() noexcept;
+	/**
+	 * 负责转发所有resize信息
+	 */
+	void resize(int width, int height) noexcept(false);
+
+	static bool $deleteObject(const HGDIOBJ obj) noexcept {
+		const unsigned type = GetObjectType(obj);
+		if (!type) return true;
+		switch (type) {
+			case OBJ_BITMAP:
+				Logger.info(L"DeleteObject failure: BITMAP");
+				break;
+			case OBJ_PEN:
+				Logger.info(L"DeleteObject failure: PEN");
+				break;
+			case OBJ_BRUSH:
+				Logger.info(L"DeleteObject failure: BRUSH");
+				break;
+			case OBJ_FONT:
+				Logger.info(L"DeleteObject failure: FONT");
+				break;
+			case OBJ_REGION:
+				Logger.info(L"DeleteObject failure: REGION");
+				break;
+			case OBJ_DC:
+				Logger.info(L"DeleteObject failure: DC");
+				break;
+			case OBJ_MEMDC:
+				Logger.info(L"DeleteObject failure: MEMDC");
+				break;
+			case OBJ_PAL:
+				Logger.info(L"DeleteObject failure: PAL");
+				break;
+			default:
+				Logger.info(L"DeleteObject failure: ? " + std::to_wstring(type));
+				break;
+		}
+		return false;
+	}
+
+	void deleteObject(HGDIOBJ obj) const noexcept {
+		List<HGDIOBJ> tempList;
+		tempList.swap(failed);
+		for (List<HGDIOBJ>::const_iterator iter = tempList.cbegin(); iter != tempList.cend(); ++iter)
+			if (!DeleteObject(*iter)) {
+				Logger.error(L"DeleteObject failed again. Deleting: " + qwtowb16(reinterpret_cast<QWORD>(*iter)) + L", LastError: " + std::to_wstring(GetLastError()));
+				if ($deleteObject(obj)) Logger.info(L"DeleteObject failure: Invalid HGIDOBJ");
+				else { failed.push_back(*iter); }
+			}
+		if (obj && !DeleteObject(obj)) {
+			Logger.error(L"DeleteObject failed. Deleting: " + qwtowb16(reinterpret_cast<QWORD>(obj)) + L", LastError: " + std::to_wstring(GetLastError()));
+			if ($deleteObject(obj)) Logger.info(L"DeleteObject failure: Invalid HGIDOBJ");
+			else failed.push_back(obj);
+		}
+	}
+
+	static void deleteDC(const HDC dc) noexcept {
+		HGDIOBJ obj;
+		if ((obj = GetCurrentObject(dc, OBJ_BITMAP))) SelectObject(dc, obj);
+		if ((obj = GetCurrentObject(dc, OBJ_BRUSH))) SelectObject(dc, obj);
+		if ((obj = GetCurrentObject(dc, OBJ_COLORSPACE))) SelectObject(dc, obj);
+		if ((obj = GetCurrentObject(dc, OBJ_FONT))) SelectObject(dc, obj);
+		if ((obj = GetCurrentObject(dc, OBJ_PAL))) SelectObject(dc, obj);
+		if ((obj = GetCurrentObject(dc, OBJ_PEN))) SelectObject(dc, obj);
+		DeleteDC(dc);
+	}
 
 public:
 	Renderer() {
@@ -121,10 +189,6 @@ public:
 				this->resizeEnd();
 			}
 		};
-		resizeTask.func = [this](Task& task) {
-			resize(getSyncWidth(), getSyncHeight());
-			task.pop();
-		};
 	}
 
 	~Renderer() override {
@@ -132,13 +196,8 @@ public:
 		// finalize();
 	}
 
-	void initialize() noexcept;
-	void finalize() noexcept;
-
-	/**
-	 * 负责转发所有resize信息
-	 */
-	void resize(int width, int height) noexcept(false);
+	void finalize(bool isRenderThread) noexcept;
+	void requireResize() noexcept { isResizeRequired = true; }
 	void syncSize(int width, int height) noexcept(false);
 	[[nodiscard]] int getWidth() const noexcept { return windowWidth; }
 	[[nodiscard]] int getHeight() const noexcept { return windowHeight; }
@@ -157,93 +216,7 @@ public:
 	Camera& getCamera() const noexcept { return camera; }
 	void resizeStart() noexcept { isResizing = true; }
 	void resizeShow() const noexcept { StretchBlt(MainDC, 0, 0, syncWidth, syncHeight, resizeCopyDC, 0, 0, resizeCopyWidth, resizeCopyHeight, SRCCOPY); }
-
-	void resizeEnd() noexcept {
-		isResizing = false;
-		deleteObject(resizeCopyBitmap);
-		resizeCopyBitmap = nullptr;
-		resizeCopyWidth = 0;
-		resizeCopyHeight = 0;
-		resize(syncWidth, syncHeight);
-	}
-
-	void deleteObject(HGDIOBJ obj) const noexcept {
-		List<HGDIOBJ> tempList;
-		tempList.swap(failed);
-		for (List<HGDIOBJ>::const_iterator iter = tempList.cbegin(); iter != tempList.cend(); ++iter)
-			if (!DeleteObject(*iter)) {
-				Logger.error(L"DeleteObject failed again. Deleting: " + qwtowb16(reinterpret_cast<QWORD>(*iter)) + L", LastError: " + std::to_wstring(GetLastError()));
-				if (const unsigned int type = GetObjectType(obj); !type) Logger.info(L"DeleteObject failure: Invalid HGIDOBJ");
-				else {
-					switch (type) {
-						case OBJ_BITMAP:
-							Logger.info(L"DeleteObject failure: BITMAP");
-							break;
-						case OBJ_PEN:
-							Logger.info(L"DeleteObject failure: PEN");
-							break;
-						case OBJ_BRUSH:
-							Logger.info(L"DeleteObject failure: BRUSH");
-							break;
-						case OBJ_FONT:
-							Logger.info(L"DeleteObject failure: FONT");
-							break;
-						case OBJ_REGION:
-							Logger.info(L"DeleteObject failure: REGION");
-							break;
-						case OBJ_DC:
-							Logger.info(L"DeleteObject failure: DC");
-							break;
-						case OBJ_MEMDC:
-							Logger.info(L"DeleteObject failure: MEMDC");
-							break;
-						case OBJ_PAL:
-							Logger.info(L"DeleteObject failure: PAL");
-							break;
-						default:
-							Logger.info(L"DeleteObject failure: ? " + std::to_wstring(type));
-							break;
-					}
-					failed.push_back(*iter);
-				}
-			}
-		if (obj && !DeleteObject(obj)) {
-			Logger.error(L"DeleteObject failed. Deleting: " + qwtowb16(reinterpret_cast<QWORD>(obj)) + L", LastError: " + std::to_wstring(GetLastError()));
-			if (const unsigned int type = GetObjectType(obj); !type) Logger.info(L"DeleteObject failure: Invalid HGIDOBJ");
-			else {
-				switch (type) {
-					case OBJ_BITMAP:
-						Logger.info(L"DeleteObject failure: BITMAP");
-						break;
-					case OBJ_PEN:
-						Logger.info(L"DeleteObject failure: PEN");
-						break;
-					case OBJ_BRUSH:
-						Logger.info(L"DeleteObject failure: BRUSH");
-						break;
-					case OBJ_FONT:
-						Logger.info(L"DeleteObject failure: FONT");
-						break;
-					case OBJ_REGION:
-						Logger.info(L"DeleteObject failure: REGION");
-						break;
-					case OBJ_DC:
-						Logger.info(L"DeleteObject failure: DC");
-						break;
-					case OBJ_MEMDC:
-						Logger.info(L"DeleteObject failure: MEMDC");
-						break;
-					case OBJ_PAL:
-						Logger.info(L"DeleteObject failure: PAL");
-						break;
-					default:
-						Logger.info(L"DeleteObject failure: ? " + std::to_wstring(type));
-						break;
-				}
-				failed.push_back(obj);
-			}
-		}
-	}
+	void resizeEnd() noexcept;
 
 	void fill(const int x, const int y, const int w, const int h, const unsigned int color) const {
 		assertRendering();

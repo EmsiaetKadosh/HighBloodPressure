@@ -35,7 +35,7 @@ private:
 	AnywhereEditableList<T, L>* list = nullptr; // 指示自身属于某个列表
 	bool managedByList = false; // 指示是否在列表内管理内存，而非列表外管理内存
 public:
-	byte reserved[7]{}; // reserved[0]: Task::schedulePop
+	byte reserved[7]{}; // reserved[0]: Task::schedulePop, Window::syncClose
 
 	AnywhereEditable() = default;
 	AnywhereEditable(const AnywhereEditable&) {}
@@ -216,4 +216,45 @@ int AnywhereEditableList<T, L>::pop(T* value) noexcept {
 	value->prev->next = value->next;
 	if (value->managedByList) gc.submit(value);
 	Success();
+}
+
+//
+// Time
+//
+namespace $LimitedAccess {
+	inline const Time startTime = std::chrono::system_clock::now();
+}
+
+inline Time getCurrentTime() noexcept {
+	using namespace std::chrono;
+	return system_clock::now();
+}
+
+inline NanoDuration getRunTime() noexcept {
+	using namespace std::chrono;
+	return duration_cast<nanoseconds>(system_clock::now() - $LimitedAccess::startTime);
+}
+
+//
+// StackTrace
+//
+
+inline void printStackTrace(const unsigned int skip = 0, int maxCount = 5, const int type = 0) {
+	if (!maxCount) return;
+	const std::stacktrace stack = std::stacktrace::current(1 + skip);
+	std::wstringstream ss;
+	ss << L"Stacktrace:";
+	if (type)
+		for (const auto& entry : stack) {
+			ss << L"\n        Calling " << atow(entry.description().c_str()) << L" #" << entry.native_handle();
+			if (const std::string str = entry.source_file(); !str.empty()) ss << L"\n            @ " << atow(entry.source_file().c_str()) << L":" << entry.source_line();
+			if (!--maxCount) break;
+		}
+	else
+		for (const auto& entry : stack) {
+			ss << L"\n        Calling " << atow(entry.description().c_str());
+			if (const std::string str = entry.source_file(); !str.empty()) ss << L" @ " << atow(entry.source_file().c_str()) << L":" << entry.source_line();
+			if (!--maxCount) break;
+		}
+	Logger.trace(ss.str());
 }

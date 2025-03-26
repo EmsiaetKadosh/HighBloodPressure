@@ -3,3 +3,8 @@
 //
 
 #include "Entity.h"
+
+void Entity::processVelocity() noexcept {
+	if (!world) return;
+
+}

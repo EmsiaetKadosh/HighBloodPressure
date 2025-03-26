@@ -14,7 +14,12 @@ int Window::pop() noexcept {
 }
 
 void Window::render(const double tickDelta) const noexcept { for (const Widget* widget : widgets) widget->render(tickDelta); }
-void Window::tick() noexcept { for (Widget* widget : widgets) widget->tick(); }
+
+void Window::tick() noexcept {
+	for (Widget* widget : widgets) widget->tick();
+	if (reserved[0]) game.closeWindow(this);
+}
+
 void Window::onResize() { for (Widget* widget : widgets) widget->onResize(); }
 
 int Window::passEvent(const MouseActionCode action, const MouseButtonCode value, const int x, const int y) noexcept {
@@ -93,14 +98,16 @@ CaptionWindow::CaptionWindow() {
 	options->onTick = [](const Widget& self, MouseButtonCode) {
 		if (self.containsMouse()) {
 			game.getFloatWindow().push(TranslatableText(L"hbp.float.settings").getRenderableString());
+			game.getFloatWindow().push(LiteralText(L"\\.ffee0000\\#ff000000中键调用GetLastError()").getRenderableString());
 			game.getFloatWindow().push(TranslatableText(L"hbp.float.freshCanvas").getRenderableString());
 		}
 	};
-	options->mouseClick = [](Widget&, const MouseButtonCode code) { if (static_cast<int>(MouseButtonCodeEnum::MBC_R_CHANGE) & code) {
-		Logger.info(L"try resize");
-		renderer.resize(renderer.getSyncWidth(), renderer.getSyncHeight());
-		// game.tasks.pushThis(renderer.resizeReloadBitmap);
-	} };
+	options->mouseClick = [](Widget&, const MouseButtonCode code) {
+		if (static_cast<int>(MouseButtonCodeEnum::MBC_R_CHANGE) & code) {
+			Logger.info(L"try resize: " + std::to_wstring(renderer.getWidth()) + L" " + std::to_wstring(renderer.getHeight()) + L", sync: " + std::to_wstring(renderer.getSyncWidth()) + L" " + std::to_wstring(renderer.getSyncHeight()));
+			renderer.requireResize();
+		} else if (static_cast<int>(MouseButtonCodeEnum::MBC_M_CHANGE) & code) Logger.info(L"LastError: " + std::to_wstring(GetLastError()));
+	};
 	options->absolute();
 	options->backgroundColor.hover = 0xffcccccc;
 	options->backgroundColor.active = 0;
@@ -307,12 +314,7 @@ ConfirmWindow& ConfirmWindow::requireConfirm(const Function<void(Button&)>& func
 
 ConfirmWindow& ConfirmWindow::requireCancel(const Function<void(Button&)>& func) {
 	cancel = dynamic_cast<Button*>(widgets.emplace_back(std::move(Button(0, 0.1, 0.4, 0.08, UILocation::CENTER, TranslatableText(L"hbp.confirm.cancel")))).ptr());
-	cancel->mouseClick = [this](Widget&, MouseButtonCode) {
-		game.tasks.pushNewed(allocatedFor(new Task([this](Task& self) {
-			if (game.closeWindow(this)) this->onClose();
-			self.pop();
-			})));
-	};
+	cancel->mouseClick = [this](Widget&, MouseButtonCode) { syncClose(); };
 	cancel->location = UILocation::CENTER;
 	cancel->backgroundColor.active = 0x99000000;
 	cancel->backgroundColor.hover = 0x99ff0000;

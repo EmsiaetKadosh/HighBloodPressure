@@ -26,6 +26,8 @@ add_executable(${PROJECT_NAME}
         src/utils/File.cpp
         src/utils/exception.cpp
 
+        src/utils/Task.cpp
+
         src/interact/InteractManager.cpp
         src/utils/IText.cpp
         src/game/world/Location.cpp
@@ -35,6 +37,7 @@ add_executable(${PROJECT_NAME}
         src/ui/Window.cpp
 
         src/game/Game.cpp
+
         src/game/entity/Entity.cpp
         src/game/entity/Player.cpp
 )

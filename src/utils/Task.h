@@ -10,15 +10,17 @@ class TaskScheduler;
 
 class Task final : public AnywhereEditable<Task> {
 	friend class TaskScheduler;
-#ifndef __CARLBEKS_DEBUG__
 	QWORD triggerInterval = 0, nextExecuteTime = 0, lastExecuteTime = 0;
-#endif
+
+	void initParams();
 
 public:
 	Function<void(Task& self)> func;
 
-	Task(const Function<void(Task& self)>& func) : func(func) {}
-	Task(Function<void(Task& self)>&& func) : func(std::move(func)) {}
+	Task(const Function<void(Task& self)>& func) : func(func) { initParams(); }
+	Task(Function<void(Task& self)>&& func) : func(std::move(func)) { initParams(); }
+	Task(const Task& other) noexcept : triggerInterval(other.triggerInterval), nextExecuteTime(other.nextExecuteTime), lastExecuteTime(other.lastExecuteTime), func(other.func) {}
+	Task(Task&& other) noexcept : triggerInterval(other.triggerInterval), nextExecuteTime(other.nextExecuteTime), lastExecuteTime(other.lastExecuteTime), func(std::move(other.func)) {}
 	void schedulePop(const bool pop) noexcept { reserved[0] = pop; }
 	[[nodiscard]] bool scheduledPop() const noexcept { return reserved[0]; }
 
@@ -26,30 +28,21 @@ public:
 		schedulePop(true);
 		Success();
 	}
-#ifndef __CARLBEKS_DEBUG__
+
 	Task& every(QWORD tick);
 	Task& after(QWORD tick);
 	Task& until(QWORD tick);
 	Task& forever();
-#endif
 };
 
 class TaskScheduler {
 public:
 	AnywhereEditableList<Task> tasks;
 
-	void runAll() {
-		for (Task& task : tasks) {
-			task.func(task);
-			if (task.scheduledPop()) {
-				task.schedulePop(false);
-				tasks.pop(&task); // pop后删除了内存，迭代器的current失效
-			}
-		}
-	}
+	void runAll();
 
-	void pushCopy(Task& task) { tasks.pushCopy(&task); }
+	void pushCopy(Task& task);
 	/* 必须是new Task，交付托管 */
-	void pushNewed(Task* task) { tasks.pushNewed(task); }
-	void pushThis(Task& task) { tasks.pushThis(&task); }
+	void pushNewed(Task* task);
+	void pushThis(Task& task);
 };

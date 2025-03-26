@@ -14,7 +14,7 @@ class WorldManager;
 class World : public IRenderable, public ITickable {
 	friend class WorldManager;
 	friend class Garbage<World>;
-	WorldID idWorld;
+	WorldID idWorld = 0;
 	Map<QWORD, Entity*> entities;
 	Map<BlockLocation, Block*, BlockLocation::Less> blocks;
 	using IterEntity = Map<QWORD, Entity*>::const_iterator;
@@ -22,22 +22,7 @@ class World : public IRenderable, public ITickable {
 
 protected:
 	World() = default;
-
-	~World() override {
-		Logger.debug(L"~World() called");
-		for (auto& [location, block] : blocks) {
-			block->onExitWorld(this, WorldTransportReason::Shutdown);
-			block->location.setWorld(0);
-			block->world = nullptr;
-			block->onRemove();
-		}
-		for (auto& [id, entity] : entities) {
-			entity->onExitWorld(this, WorldTransportReason::Shutdown);
-			entity->location.setWorld(0);
-			entity->world = nullptr;
-			// entity->onRemove() 交给EntityManager调用
-		}
-	}
+	~World() override = default;
 
 public:
 	void render(const double tickDelta) const noexcept override {
@@ -121,6 +106,8 @@ public:
 			block->onRemove();
 		}
 		gc.submit<World>(this);
+		entities.clear();
+		blocks.clear();
 		Logger.debug(L"World::onRemove() called");
 	}
 };
@@ -131,6 +118,7 @@ class WorldManager {
 	Map<WorldID, World*> worlds;
 	World* current = nullptr;
 	WorldManager() = default;
+
 	~WorldManager() {
 		Logger.debug(L"~WorldManager() called");
 		for (auto& [id, world] : worlds) world->onRemove();
@@ -156,7 +144,7 @@ public:
 
 	int setWorld(World* world) {
 		if (!world) Failed();
-		if (world->idWorld) Failed();
+		if (!world->idWorld) Failed();
 		current = world;
 		Success();
 	}
@@ -171,11 +159,12 @@ public:
 
 	static StartWorld* create() {
 		StartWorld* world = allocatedFor(new StartWorld);
-		world->addBlock(PureBarrierBlock::create(BlockLocation(0, 0)), WorldTransportReason::InitialGeneration);
-		world->addBlock(PureBarrierBlock::create(BlockLocation(1, 0)), WorldTransportReason::InitialGeneration);
-		world->addBlock(PureBarrierBlock::create(BlockLocation(2, 0)), WorldTransportReason::InitialGeneration);
-		world->addBlock(PureBarrierBlock::create(BlockLocation(3, 0)), WorldTransportReason::InitialGeneration);
-		world->addBlock(PureBarrierBlock::create(BlockLocation(4, 0)), WorldTransportReason::InitialGeneration);
+		Block* block;
+		if (world->addBlock(block = PureBarrierBlock::create(BlockLocation(-2, 0)), WorldTransportReason::InitialGeneration)) block->onRemove();
+		if (world->addBlock(block = PureBarrierBlock::create(BlockLocation(-1, 0)), WorldTransportReason::InitialGeneration)) block->onRemove();
+		if (world->addBlock(block = PureBarrierBlock::create(BlockLocation(0, 0)), WorldTransportReason::InitialGeneration)) block->onRemove();
+		if (world->addBlock(block = PureBarrierBlock::create(BlockLocation(1, 0)), WorldTransportReason::InitialGeneration)) block->onRemove();
+		if (world->addBlock(block = PureBarrierBlock::create(BlockLocation(2, 0)), WorldTransportReason::InitialGeneration)) block->onRemove();
 		return world;
 	}
 };

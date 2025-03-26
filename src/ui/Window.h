@@ -166,6 +166,10 @@ public:
 	 */
 	virtual bool onOpen() { return true; }
 	/**
+	 * 由于键盘响应是非同步的，为了防止一些线程间的冲突，此方法由MainThread调用，在GameThread实施。
+	 */
+	virtual void syncClose(const bool value = true) { reserved[0] = value; }
+	/**
 	 * 在Game.setWindow()时，本窗口关闭时调用。
 	 * 不应当外部调用。
 	 * 注意，关闭未必就是删除。

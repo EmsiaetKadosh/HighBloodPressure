@@ -59,7 +59,6 @@ public:
 		return nullptr;
 	}
 
-
 	void handleResize() {
 		caption->onResize();
 		hud.onResize();

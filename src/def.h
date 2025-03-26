@@ -16,6 +16,7 @@
 #include <list>
 #include <string>
 #include <map>
+#include <chrono>
 #include <atomic>
 #include <thread>
 #include <fstream>
@@ -24,11 +25,14 @@
 #include <set>
 #include <filesystem>
 #include <random>
+#include <stacktrace>
 
 using wchar = wchar_t;
 using QWORD = unsigned long long int;
 using String = std::wstring;
 using Thread = std::thread;
+using Time = std::chrono::time_point<std::chrono::system_clock>;
+using NanoDuration = std::chrono::duration<long long, std::nano>;
 template <typename K, typename V, typename Cmp = std::less<K>, typename Alloc = std::allocator<std::pair<const K, V>>>
 using Map = std::map<K, V, Cmp, Alloc>;
 template <typename T, typename Comparator = std::less<T>, typename Allocator = std::allocator<T>>
@@ -64,6 +68,7 @@ using Function = std::function<F>;
 #define WM_APP_MBUTTONDOWN (WM_APP + 2)
 #define WM_APP_GAMESTART (WM_APP + 3)
 #define WM_APP_EXITSIZEMOVE (WM_APP + 4)
+#define WM_APP_REQUESTHDC (WM_APP + 5)
 
 #pragma comment(lib, "Msimg32.lib")
 #pragma comment(lib, "ws2_32.lib")
@@ -92,7 +97,7 @@ concept PointerType = std::is_pointer_v<T>;
 template <typename T>
 concept TypeName = NonreferenceType<T> && NonpointerType<T>;
 
-namespace $LimitedUse {
+namespace $LimitedAccess {
 	struct Release {
 		Release() = default;
 
@@ -117,7 +122,7 @@ void checkAllocation(const void* value) noexcept(false);
 inline String ptrtow(QWORD value);
 
 #if defined __CARLBEKS_DEBUG__ || defined __CARLBEKS_MEMORY__
-namespace $LimitedUse {
+namespace $LimitedAccess {
 	void printAllocate(void* value, std::size_t size, const String&);
 	void printDeallocate(void* value, std::size_t size, const String&);
 	void printDeallocateWarning(void* value, const String& msg);
@@ -129,26 +134,26 @@ template <typename T>
 T* allocatedFor$(T* value, const String& msg = L"", std::size_t size = sizeof(T)) {
 	requireNonnull(value);
 	bool expect = false;
-	while (!$LimitedUse::memoryManager.acquiring.compare_exchange_strong(expect, true)) expect = false;
-	const auto& k = $LimitedUse::memoryManager.allocated.emplace(value, $LimitedUse::MemoryManager::MemoryInfo{L"[" + atow(typeid(T).name()) + L"] " + msg, size}).first;
+	while (!$LimitedAccess::memoryManager.acquiring.compare_exchange_strong(expect, true)) expect = false;
+	const auto& k = $LimitedAccess::memoryManager.allocated.emplace(value, $LimitedAccess::MemoryManager::MemoryInfo{L"[" + atow(typeid(T).name()) + L"] " + msg, size}).first;
 #if __CARLBEKS_MEMORY__ > 2
 	$LimitedUse::printAllocate(value, k->second.size, k->second.msg);
 #endif
-	$LimitedUse::memoryManager.acquiring.store(false);
+	$LimitedAccess::memoryManager.acquiring.store(false);
 	return value;
 }
 
 template <typename T>
 T* deallocating$(T* value, const String& stack) {
 	bool expect = false;
-	while (!$LimitedUse::memoryManager.acquiring.compare_exchange_strong(expect, true)) expect = false;
+	while (!$LimitedAccess::memoryManager.acquiring.compare_exchange_strong(expect, true)) expect = false;
 #if __CARLBEKS_MEMORY__ > 2
 	const $LimitedUse::MemoryManager::MemoryInfo* info = nullptr;
 	if ($LimitedUse::memoryManager.allocated.contains(value)) info = &$LimitedUse::memoryManager.allocated.at(value);
 	$LimitedUse::printDeallocate(value, info ? info->size : 0, info ? info->msg : L"???");
 #endif
-	if (value) { if (!$LimitedUse::memoryManager.allocated.erase(value)) $LimitedUse::printDeallocateWarning(value, L"value not recorded" + stack); }
-	$LimitedUse::memoryManager.acquiring.store(false);
+	if (value) { if (!$LimitedAccess::memoryManager.allocated.erase(value)) $LimitedAccess::printDeallocateWarning(value, L"value not recorded" + stack); }
+	$LimitedAccess::memoryManager.acquiring.store(false);
 	return value;
 }
 

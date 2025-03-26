@@ -206,7 +206,7 @@ class InteractSettings {
 		int marginWidth = 40;
 		int fontHeight = 96;
 		int floatWindowMargin = 16;
-		double mapScale = 32.0; // 1格表现为32像素
+		double mapScale = 256.0; // 1格表现为32像素
 	};
 
 	struct Constants {

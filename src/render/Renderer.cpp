@@ -11,6 +11,8 @@
 void Renderer::gameStartRender() noexcept {
 	isRendering = true;
 	renderThread = std::this_thread::get_id();
+	if (!MainDC || isResizeRequired || GetPixel(canvasDC, windowWidth - 1, windowHeight - 1) == 0xffffffff) resize(syncWidth, syncHeight);
+	if (!MainDC) return;
 	renderer.fill(0, interactSettings.actual.captionHeight, renderer.getWidth(), renderer.getHeight(), 0xff000000);
 }
 
@@ -31,55 +33,54 @@ void Renderer::gameEndRender() noexcept {
 	}
 }
 
-void Renderer::initialize() noexcept {
-	if (MainDC && assistDC && canvasDC) return;
-	MainDC = GetDC(MainWindowHandle);
-	canvasDC = CreateCompatibleDC(MainDC);
-	assistDC = CreateCompatibleDC(canvasDC);
-	resizeCopyDC = CreateCompatibleDC(MainDC);
-	canvasBitmap = CreateCompatibleBitmap(MainDC, windowWidth, windowHeight);
-	SelectObject(canvasDC, canvasBitmap);
-	assistBitmap = CreateCompatibleBitmap(canvasDC, windowWidth, windowHeight);
-	SelectObject(assistDC, assistBitmap);
-	if (!canvasDC) Logger.error(L"canvasDC is nullptr");
-	if (!assistDC) Logger.error(L"assistDC is nullptr");
-	if (!resizeCopyDC) Logger.error(L"resizeCopyDC is nullptr");
-	if (!canvasBitmap) Logger.error(L"canvasBitmap is nullptr");
-	if (!assistBitmap) Logger.error(L"assistBitmap is nullptr");
-	SetBkMode(MainDC, TRANSPARENT);
-	SetBkMode(canvasDC, TRANSPARENT);
-	SetBkMode(assistDC, TRANSPARENT);
-	RECT rect;
-	GetWindowRect(MainWindowHandle, &rect);
-	// resize(rect.right - rect.left, rect.bottom - rect.top);
-}
-
 /**
  * 有一些事情必须在当前线程（renderThread）做，否则可能会有问题。
  * 虽然执行到此处程序必然是已经准备终止了，但是还是遵守一下。
  */
-void Renderer::finalize() noexcept {
-	if (MainDC) DeleteDC(MainDC), MainDC = nullptr;
-	if (assistDC) DeleteDC(assistDC), assistDC = nullptr;
-	if (canvasDC) DeleteDC(canvasDC), canvasDC = nullptr;
-	if (resizeCopyDC) DeleteDC(resizeCopyDC), resizeCopyDC = nullptr;
-	if (canvasBitmap) DeleteObject(canvasBitmap), canvasBitmap = nullptr;
-	if (assistBitmap) DeleteObject(assistBitmap), assistBitmap = nullptr;
-	if (resizeCopyBitmap) DeleteObject(resizeCopyBitmap), resizeCopyBitmap = nullptr;
+void Renderer::finalize(const bool isRenderThread) noexcept {
+	if (isRenderThread) {
+		if (assistDC) DeleteDC(assistDC), assistDC = nullptr;
+		if (canvasDC) DeleteDC(canvasDC), canvasDC = nullptr;
+		if (resizeCopyDC) DeleteDC(resizeCopyDC), resizeCopyDC = nullptr;
+		if (canvasBitmap) DeleteObject(canvasBitmap), canvasBitmap = nullptr;
+		if (assistBitmap) DeleteObject(assistBitmap), assistBitmap = nullptr;
+		if (resizeCopyBitmap) DeleteObject(resizeCopyBitmap), resizeCopyBitmap = nullptr;
+	} else if (MainDC) DeleteDC(MainDC), MainDC = nullptr;
 }
 
 void Renderer::resize(const int width, const int height) noexcept(false) {
+	if (refreshedHDC == -1) { // 尚未Post请求
+		if (!PostMessageW(MainWindowHandle, WM_APP_REQUESTHDC, 0, 0)) {
+			isRunning = false;
+			Logger.error(L"PostMessage WM_APP_REQUESTHDC failed. LastError: " + std::to_wstring(GetLastError()));
+		}
+		Logger.debug(L"Resize post request");
+		refreshedHDC = 0;
+		return;
+	}
+	if (refreshedHDC == 0) {
+		Logger.trace(L"Resize waiting for HDC");
+		return; // 已经Post，但是尚未获取到新的
+	}
+	// refreshedHDC == 1; 已经获取到新的
+	refreshedHDC = -1;
+	isResizeRequired = false;
+	Logger.print(L"Resize:", width, height, L"Time:", getRunTime().count());
 	const bool flag = windowWidth != width || windowHeight != height;
 	windowWidth = width;
 	windowHeight = height;
-	std::atomic_thread_fence(std::memory_order_seq_cst);
-	const HBITMAP canvas = canvasBitmap, assist = assistBitmap;
+	deleteDC(canvasDC);
+	deleteDC(assistDC);
+	canvasDC = CreateCompatibleDC(MainDC);
+	assistDC = CreateCompatibleDC(canvasDC);
+	SetBkMode(canvasDC, TRANSPARENT);
+	SetBkMode(assistDC, TRANSPARENT);
+	deleteObject(canvasBitmap);
+	deleteObject(assistBitmap);
 	canvasBitmap = CreateCompatibleBitmap(MainDC, width, height);
-	assistBitmap = CreateCompatibleBitmap(assistDC, width, height);
+	assistBitmap = CreateCompatibleBitmap(MainDC, width, height);
 	SelectObject(canvasDC, canvasBitmap);
 	SelectObject(assistDC, assistBitmap);
-	deleteObject(canvas);
-	deleteObject(assist);
 	if (!canvasBitmap || !assistBitmap) {
 		if (!resizeReloadBitmap.getContainer()) {
 			game.tasks.pushThis(resizeReloadBitmap);
@@ -96,6 +97,15 @@ void Renderer::resize(const int width, const int height) noexcept(false) {
 void Renderer::syncSize(const int width, const int height) noexcept(false) {
 	syncWidth = width;
 	syncHeight = height;
+}
+
+void Renderer::resizeEnd() noexcept {
+	isResizing = false;
+	if (resizeCopyBitmap) deleteObject(resizeCopyBitmap);
+	resizeCopyBitmap = nullptr;
+	resizeCopyWidth = 0;
+	resizeCopyHeight = 0;
+	requireResize();
 }
 
 inline Renderer renderer = Renderer();

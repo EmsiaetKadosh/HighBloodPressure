@@ -30,17 +30,17 @@ void ObjectHolder<Base>::set(T&& value) {
 void requireNonnull(const void* value) noexcept(false) { if (!value) throw NullPointerException(L"value is null"); }
 void checkAllocation(const void* value) noexcept(false) { if (!value) throw BadAllocationException(L"bad allocation"); }
 
-void $LimitedUse::printAllocate(void* value, const size_t size, const String& msg) {
+void $LimitedAccess::printAllocate(void* value, const size_t size, const String& msg) {
 	const String str = L"alloc   " + ptrtow(reinterpret_cast<QWORD>(value)) + L" " + std::to_wstring(size) + String(L"B ") + msg;
 	Logger.log(str);
 }
 
-void $LimitedUse::printDeallocate(void* value, const size_t size, const String& msg) {
+void $LimitedAccess::printDeallocate(void* value, const size_t size, const String& msg) {
 	const String str = L"dealloc " + ptrtow(reinterpret_cast<QWORD>(value)) + L" " + std::to_wstring(size) + String(L"B ") + msg;
 	Logger.log(str);
 }
 
-void $LimitedUse::printDeallocateWarning(void* value, const String& msg) {
+void $LimitedAccess::printDeallocateWarning(void* value, const String& msg) {
 	const String str = L"dealloc " + ptrtow(reinterpret_cast<QWORD>(value)) + L": " + msg;
 	Logger.error(str);
 }
@@ -48,7 +48,7 @@ void $LimitedUse::printDeallocateWarning(void* value, const String& msg) {
 
 String ptrtow(const QWORD value) { return qwtowb16(value, 16); }
 
-namespace $LimitedUse {
+namespace $LimitedAccess {
 	Release::~Release() {
 		delete &gc;
 		Logger.put(L"--------- Last Check ---------");
