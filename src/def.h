@@ -39,6 +39,8 @@ template <typename T, typename Comparator = std::less<T>, typename Allocator = s
 using Set = std::set<T, Comparator, Allocator>;
 template <typename T, typename Allocator = std::allocator<T>>
 using List = std::list<T, Allocator>;
+template <typename T, typename Allocator = std::allocator<T>>
+using Vector = std::vector<T, Allocator>;
 template <typename F>
 using Function = std::function<F>;
 
@@ -128,6 +130,7 @@ namespace $LimitedAccess {
 	void printDeallocateWarning(void* value, const String& msg);
 }
 
+[[noreturn]] void unreachable() noexcept(false);
 extern String atow(const char* chars);
 
 template <typename T>
@@ -174,6 +177,7 @@ T* deallocating$(T* value, const String& stack) {
 #else
 #define deallocating(val) deallocating$(val)
 #endif
+
 #else
 #define allocatedFor(val, ...) val
 #define deallocating(val) val
@@ -211,6 +215,13 @@ public:
 
 	template <NewMoveable T> requires std::is_base_of_v<Base, T> && TypeName<T>
 	void set(T&& value);
+
+	template<TypeName T, typename ...ConstructorParams>
+	T& allocate(ConstructorParams&& ...params) {
+		if (hasValue) delete deallocating(value);
+		value = allocatedFor(new T(std::forward<ConstructorParams>(params)...));
+		return *value;
+	}
 
 	~ObjectHolder() {
 		if (hasValue) delete deallocating(value);

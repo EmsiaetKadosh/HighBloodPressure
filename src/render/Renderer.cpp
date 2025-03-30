@@ -50,6 +50,7 @@ void Renderer::finalize(const bool isRenderThread) noexcept {
 
 void Renderer::resize(const int width, const int height) noexcept(false) {
 	if (refreshedHDC == -1) { // 尚未Post请求
+		lastPostRefreshTime = getCurrentTime();
 		if (!PostMessageW(MainWindowHandle, WM_APP_REQUESTHDC, 0, 0)) {
 			isRunning = false;
 			Logger.error(L"PostMessage WM_APP_REQUESTHDC failed. LastError: " + std::to_wstring(GetLastError()));
@@ -60,6 +61,14 @@ void Renderer::resize(const int width, const int height) noexcept(false) {
 	}
 	if (refreshedHDC == 0) {
 		Logger.trace(L"Resize waiting for HDC");
+		if (getCurrentTime() - lastPostRefreshTime >= std::chrono::seconds(1)) {
+			Logger.debug(L"Resize re-post");
+			if (!PostMessageW(MainWindowHandle, WM_APP_REQUESTHDC, 0, 0)) {
+				isRunning = false;
+				Logger.error(L"PostMessage WM_APP_REQUESTHDC failed. LastError: " + std::to_wstring(GetLastError()));
+			}
+			else lastPostRefreshTime = getCurrentTime();
+		}
 		return; // 已经Post，但是尚未获取到新的
 	}
 	// refreshedHDC == 1; 已经获取到新的

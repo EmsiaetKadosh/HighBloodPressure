@@ -4,10 +4,10 @@
 
 #include "def.h"
 
-#include "utils\File.h"
 #include "utils\exception.h"
 #include "utils\Chars.h"
 #include "utils\gc.h"
+#include "utils\utils.h"
 
 template<TypeName Base> template<NewCopyable T> requires std::is_base_of_v<Base, T> && TypeName<T>
 void ObjectHolder<Base>::set(const T& value) {
@@ -30,6 +30,7 @@ void ObjectHolder<Base>::set(T&& value) {
 void requireNonnull(const void* value) noexcept(false) { if (!value) throw NullPointerException(L"value is null"); }
 void checkAllocation(const void* value) noexcept(false) { if (!value) throw BadAllocationException(L"bad allocation"); }
 
+#if defined __CARLBEKS_DEBUG__ || defined __CARLBEKS_MEMORY__
 void $LimitedAccess::printAllocate(void* value, const size_t size, const String& msg) {
 	const String str = L"alloc   " + ptrtow(reinterpret_cast<QWORD>(value)) + L" " + std::to_wstring(size) + String(L"B ") + msg;
 	Logger.log(str);
@@ -45,6 +46,12 @@ void $LimitedAccess::printDeallocateWarning(void* value, const String& msg) {
 	Logger.error(str);
 }
 
+[[noreturn]] void unreachable() noexcept(false) {
+	Logger.error(L"Unreachable code executed");
+	printStackTrace(1);
+	throw RuntimeException(L"Unreachable code executed");
+}
+#endif
 
 String ptrtow(const QWORD value) { return qwtowb16(value, 16); }
 
@@ -52,7 +59,7 @@ namespace $LimitedAccess {
 	Release::~Release() {
 		delete &gc;
 		Logger.put(L"--------- Last Check ---------");
-		for (const auto& [addr, info] : memoryManager.allocated) { Logger.print(L"  using", addr, info.size, L"B", info.msg); }
+		for (const auto& [addr, info] : memoryManager.allocated) Logger.print(L"  using", addr, info.size, L"B", info.msg);
 		delete &Logger;
 		delete &memoryManager;
 		std::wcout << L"^^^^^^^^^^^^^^^^^^^^^^^^^^^^^\n";

@@ -39,6 +39,7 @@ add_executable(${PROJECT_NAME}
         src/game/Game.cpp
 
         src/game/entity/Entity.cpp
+        src/game/world/World.cpp
         src/game/entity/Player.cpp
 )
 set(CPACK_PROJECT_NAME ${PROJECT_NAME})

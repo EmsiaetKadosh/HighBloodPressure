@@ -34,6 +34,7 @@
 
 // game extension
 #include "ui\xWindows.h"
+#include "game\gameDef.h"
 #include "game\entity\Entity.h"
 #include "game\world\Block.h"
 #include "game\world\World.h"

@@ -105,8 +105,7 @@ public:
 	[[nodiscard]] WorldID getWorld() const noexcept { return idWorld; }
 	[[nodiscard]] double getX() const noexcept { return position.getX(); }
 	[[nodiscard]] double getY() const noexcept { return position.getY(); }
-	[[nodiscard]] BlockLocation getBlockLocation() const noexcept;
-
+	[[nodiscard]] BlockLocation toBlockLocation() const noexcept;
 	void setPosition(const Vector2D& vector) noexcept { position = vector; }
 	void setWorld(const WorldID idWorld) noexcept { this->idWorld = idWorld; }
 };
@@ -117,7 +116,7 @@ class [[carlbeks::TriviallyCopyable]] BlockLocation {
 
 public:
 	BlockLocation(const long long x, const long long y) noexcept : x(x), y(y), idWorld(0) {}
-	BlockLocation(const Vector2D& position) noexcept : x(static_cast<long long>(position.getX())), y(static_cast<long long>(position.getY())), idWorld(0) {}
+	BlockLocation(const Vector2D& position) noexcept : x(static_cast<long long>(std::floor(position.getX()))), y(static_cast<long long>(std::floor(position.getY()))), idWorld(0) {}
 	BlockLocation(const long long x, const long long y, const WorldID idWorld) noexcept : x(x), y(y), idWorld(idWorld) {}
 	BlockLocation(const Vector2D& position, const WorldID idWorld) noexcept : x(static_cast<long long>(std::floor(position.getX()))), y(static_cast<long long>(std::floor(position.getY()))), idWorld(idWorld) {}
 	BlockLocation(const BlockLocation& other) noexcept = default;
@@ -126,10 +125,12 @@ public:
 	[[nodiscard]] WorldID getWorld() const noexcept { return idWorld; }
 	[[nodiscard]] long long getX() const noexcept { return x; }
 	[[nodiscard]] long long getY() const noexcept { return y; }
-	[[nodiscard]] Location toLocation() const noexcept { return Location({ static_cast<double>(x), static_cast<double>(y) }, idWorld); }
-
+	[[nodiscard]] Location toLocation() const noexcept { return Location({static_cast<double>(x), static_cast<double>(y)}, idWorld); }
 	void setPosition(const long long x, const long long y) noexcept { this->x = x, this->y = y; }
 	void setWorld(const WorldID idWorld) noexcept { this->idWorld = idWorld; }
+
+	[[nodiscard]] static bool blockContains(const Vector2D& position, const Vector2D& other) { return position.getX() <= other.getX() && position.getY() <= other.getY() && position.getX() + 1.0 >= other.getX() && position.getY() + 1.0 >= other.getY(); }
+	[[nodiscard]] static bool blockCenterContains(const Vector2D& center, const Vector2D& other) { return center.getX() - 0.5 <= other.getX() && center.getY() - 0.5 <= other.getY() && center.getX() + 0.5 >= other.getX() && center.getY() + 0.5 >= other.getY(); }
 
 	struct Less {
 		bool operator()(const BlockLocation& lhs, const BlockLocation& rhs) const noexcept;
@@ -139,5 +140,5 @@ public:
 inline bool BlockLocation::Less::operator()(const BlockLocation& lhs, const BlockLocation& rhs) const noexcept { return lhs.y < rhs.y || (lhs.y == rhs.y && lhs.x < rhs.x); }
 
 
-inline BlockLocation Location::getBlockLocation() const noexcept { return BlockLocation(position, idWorld); }
+inline BlockLocation Location::toBlockLocation() const noexcept { return BlockLocation(position, idWorld); }
 

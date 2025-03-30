@@ -281,8 +281,11 @@ void gameThread() {
 			renderer.tick();
 			lastTick = thisTime;
 		}
-	} catch (const Exception& e) { Logger.error(L"Game thread exception: " + e.getMessage()); }
-	catch (const std::exception& e) { Logger.error(L"Game thread exception: " + atow(e.what())); }
+	} catch (const Exception& e) {
+		Logger.error(L"Game thread exception: " + e.getMessage());
+		printStackTrace(e.getStackTrace());
+	}
+	catch (const std::exception& e) { Logger.error(L"Game thread exception (builtin): " + atow(e.what())); }
 	Logger.error(L"Game thread ended.");
 	isRunning = false;
 	DestroyWindow(MainWindowHandle);
@@ -303,11 +306,14 @@ void renderThread() {
 				Sleep(1);
 				continue;
 			}
-			game.render(nRange(static_cast<double>((thisTime - lastTick).count()) / static_cast<double>(interactSettings.constants.msPerRender), 0.0, 1.0));
+			game.render(nRange(static_cast<double>((thisTime - lastTick) / std::chrono::milliseconds(interactSettings.constants.msPerRender)), 0.0, 1.0));
 			lastRender = thisTime;
 		}
-	} catch (const Exception& e) { Logger.log(L"Render thread exception: " + e.getMessage()); }
-	catch (const std::exception& e) { Logger.log(L"Render thread exception: " + atow(e.what())); }
+	} catch (const Exception& e) {
+		Logger.log(L"Render thread exception: " + e.getMessage());
+		printStackTrace(e.getStackTrace());
+	}
+	catch (const std::exception& e) { Logger.log(L"Render thread exception (builtin): " + atow(e.what())); }
 	Logger.error(L"Render thread ended.");
 	isRunning = false;
 	DestroyWindow(MainWindowHandle);
@@ -477,7 +483,7 @@ LRESULT __stdcall WndProc(const HWND hwnd, const UINT uMsg, const WPARAM wParam,
 			renderer.MainDC = GetDC(MainWindowHandle);
 			Logger.info(L"Get new DC: " + std::to_wstring(reinterpret_cast<QWORD>(renderer.MainDC)));
 			if (!renderer.MainDC) Logger.error(L"WM_APP_REQUESTHDC failed to initialize HDC. LastError: " + std::to_wstring(GetLastError()));
-			else 	SetBkMode(renderer.MainDC, TRANSPARENT);
+			else SetBkMode(renderer.MainDC, TRANSPARENT);
 			renderer.refreshedHDC = 1;
 			break;
 		}
@@ -489,8 +495,6 @@ LRESULT __stdcall WndProc(const HWND hwnd, const UINT uMsg, const WPARAM wParam,
 			[[unlikely]]
 		case WM_APP_GAMESTART:
 			renderer.requireResize();
-			// renderer.MainDC = GetDC(MainWindowHandle);
-			// if (!renderer.MainDC) Logger.error(L"WM_APP_GAMESTART failed to initialize HDC. LastError: " + std::to_wstring(GetLastError()));
 			break;
 		default:
 			break;
@@ -567,7 +571,6 @@ int __stdcall wWinMain(const HINSTANCE hInstance, const HINSTANCE, [[maybe_unuse
 	ShowWindow(MainWindowHandle, nShowCmd);
 	const HHOOK hook = SetWindowsHookW(WH_GETMESSAGE, HookProc);
 	if (!hook) Logger.error(Logger.of(L"SetWindowsHookW failed. LastError:", GetLastError()));
-	test();
 	{
 		// int a = -40;
 		// game.tasks.pushNewed(allocatedFor(new Task([&a](Task& self) {
@@ -585,9 +588,13 @@ int __stdcall wWinMain(const HINSTANCE hInstance, const HINSTANCE, [[maybe_unuse
 		World* w = StartWorld::create();
 		game.worldManager->addWorld(w);
 		game.worldManager->setWorld(w);
+		Player* p = Player::create(Vector2D(0.5, 0.5));
+		game.entityManager->addEntity(p);
+		w->addEntity(p, WorldTransportReason::InitialGeneration);
 		GameThread = Thread(gameThread);
 		RenderThread = Thread(renderThread);
 	}
+	test();
 	PostMessageW(MainWindowHandle, WM_APP_GAMESTART, 0, 0);
 	const int ret = MessageLoop();
 	renderThread();

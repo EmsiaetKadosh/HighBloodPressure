@@ -10,16 +10,18 @@
 
 class Exception : public std::exception {
 	const String* type;
+	const std::stacktrace stacktrace;
 
 protected:
 	String msg;
 
-	Exception(String&& msg, const String* type) : type(type), msg(std::move(msg)) {}
-	Exception(const String& msg, const String* type) : type(type), msg(msg) {}
+	Exception(String&& msg, const String* type) : type(type), stacktrace(std::stacktrace::current(3)), msg(std::move(msg)) {}
+	Exception(const String& msg, const String* type) : type(type), stacktrace(std::stacktrace::current(3)), msg(msg) {}
 
 public:
 	[[nodiscard]] String getMessage() const noexcept { return msg; }
 	[[nodiscard]] const String* getType() const noexcept { return type; }
+	[[nodiscard]] const std::stacktrace& getStackTrace() const noexcept { return stacktrace; }
 	[[nodiscard]] const char* what() const override { return "Use Exception::getMessage() instead."; }
 };
 
@@ -63,12 +65,19 @@ public:
 	RuntimeException(const String& msg) : Exception(msg, &type) {}
 };
 
+class ZeroValueException final : public Exception {
+	inline static const String type = L"ZeroValueException";
+
+public:
+	ZeroValueException(String&& msg) : Exception(std::move(msg), &type) {}
+	ZeroValueException(const String& msg) : Exception(msg, &type) {}
+};
 
 class PublicLogger final {
 	File mainLogger = File(L"log.txt");
 	[[nodiscard]] String build(const String& msg, const String& type) const;
 
-	template<typename T, typename... Ts> requires requires(std::wstringstream stream, T& t, Ts&&... ts) {
+	template <typename T, typename... Ts> requires requires(std::wstringstream stream, T& t, Ts&&... ts) {
 		stream << std::forward<T>(t);
 		(stream << ... << std::forward<Ts>(ts));
 	}
@@ -77,10 +86,10 @@ class PublicLogger final {
 		prints(stream, std::forward<Ts>(ts)...);
 	}
 
-	template<typename T> requires requires(std::wstringstream stream, T&& t) { stream << std::forward<T>(t); }
+	template <typename T> requires requires(std::wstringstream stream, T&& t) { stream << std::forward<T>(t); }
 	static void prints(std::wstringstream& stream, T&& t) { stream << L" " << std::forward<T>(t); }
 
-	template<typename T, typename... Ts> requires requires(std::wstringstream stream, T&& t, Ts&&... ts) {
+	template <typename T, typename... Ts> requires requires(std::wstringstream stream, T&& t, Ts&&... ts) {
 		stream << std::forward<T>(t);
 		(stream << ... << std::forward<Ts>(ts));
 	}
@@ -89,7 +98,7 @@ class PublicLogger final {
 		ofs(stream, std::forward<Ts>(ts)...);
 	}
 
-	template<typename T> requires requires(std::wstringstream stream, T&& t) { stream << std::forward<T>(t); }
+	template <typename T> requires requires(std::wstringstream stream, T&& t) { stream << std::forward<T>(t); }
 	static void ofs(std::wstringstream& stream, T&& t) { stream << L" " << std::forward<T>(t); }
 
 public:
@@ -150,7 +159,7 @@ public:
 		return *this;
 	}
 
-	template<typename T> requires requires(T t) { std::wcout << t; }
+	template <typename T> requires requires(T t) { std::wcout << t; }
 	PublicLogger& print(T&& msg) noexcept {
 		std::wstringstream stream = {};
 		stream << L"          " << name << L"        " << msg << std::endl;
@@ -160,7 +169,7 @@ public:
 		return *this;
 	}
 
-	template<typename T, typename... Ts> requires requires(T t, Ts... ts) {
+	template <typename T, typename... Ts> requires requires(T t, Ts... ts) {
 		std::wcout << t;
 		(std::wcout << ... << std::forward<Ts>(ts));
 	}
@@ -175,7 +184,7 @@ public:
 		return *this;
 	}
 
-	template<typename T, typename... Ts> requires requires(std::wstringstream stream, T&& t, Ts&&... ts) {
+	template <typename T, typename... Ts> requires requires(std::wstringstream stream, T&& t, Ts&&... ts) {
 		stream << std::forward<T>(t);
 		(stream << ... << std::forward<Ts>(ts));
 	}
@@ -186,7 +195,7 @@ public:
 		return stream.str();
 	}
 
-	template<typename T> requires requires(std::wstringstream stream, T&& t) { std::wstringstream(t); }
+	template <typename T> requires requires(std::wstringstream stream, T&& t) { std::wstringstream(t); }
 	String of(T&& ts) const {
 		std::wstringstream stream = {};
 		ofs(stream, ts...);

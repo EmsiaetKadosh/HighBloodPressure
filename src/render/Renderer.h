@@ -81,7 +81,8 @@ class Renderer final : public ITickable {
 	HBITMAP canvasBitmap = nullptr; // 8
 	HDC assistDC = nullptr; // 8
 	HBITMAP assistBitmap = nullptr; // 8
-	std::thread::id renderThread = std::this_thread::get_id();
+	Thread::id renderThread = std::this_thread::get_id();
+	Time lastPostRefreshTime = getCurrentTime(); // 8
 	int windowWidth = 0, windowHeight = 0; // 4 + 4
 	/**
 	 * 指示实时大小。为了防抖，只会在改变窗口大小结束时resize并重写windowWidth和windowHeight

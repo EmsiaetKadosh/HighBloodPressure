@@ -239,22 +239,27 @@ inline NanoDuration getRunTime() noexcept {
 // StackTrace
 //
 
-inline void printStackTrace(const unsigned int skip = 0, int maxCount = 5, const int type = 0) {
+inline void printStackTrace(const std::stacktrace& stacktrace, int maxCount = 5, const int type = 0) noexcept {
 	if (!maxCount) return;
-	const std::stacktrace stack = std::stacktrace::current(1 + skip);
 	std::wstringstream ss;
 	ss << L"Stacktrace:";
 	if (type)
-		for (const auto& entry : stack) {
+		for (const auto& entry : stacktrace) {
 			ss << L"\n        Calling " << atow(entry.description().c_str()) << L" #" << entry.native_handle();
 			if (const std::string str = entry.source_file(); !str.empty()) ss << L"\n            @ " << atow(entry.source_file().c_str()) << L":" << entry.source_line();
 			if (!--maxCount) break;
 		}
 	else
-		for (const auto& entry : stack) {
+		for (const auto& entry : stacktrace) {
 			ss << L"\n        Calling " << atow(entry.description().c_str());
 			if (const std::string str = entry.source_file(); !str.empty()) ss << L" @ " << atow(entry.source_file().c_str()) << L":" << entry.source_line();
 			if (!--maxCount) break;
 		}
 	Logger.trace(ss.str());
+}
+
+inline void printStackTrace(const unsigned int skip = 0, const int maxCount = 5, const int type = 0) {
+	if (!maxCount) return;
+	const std::stacktrace stack = std::stacktrace::current(1 + skip);
+	printStackTrace(stack, maxCount, type);
 }

@@ -28,7 +28,24 @@
  * 【被】猪突猛进：血压50%以上时，若处于奔跑状态不少于0.5s，下一次闪避附带冲撞、眩晕，按命中和伤害升高血压。
  * 【主】猪突猛进：血压50%以上时，主动启动猪突猛进，在下一次闪避之前，取消【被】静如止水，改为按血压值额外增加奔跑速度，奔跑时少量消耗血压，不奔跑时快速增加血压
 */
-class Player : public Entity, public IDamageable {
-public:
+class Player final : public Entity, public IDamageable {
 	Player(const Vector2D& location) : Entity(location) {}
+
+public:
+	void render(double tickDelta) const noexcept override {
+		renderer.fillWorld(location.getPosition().add(boundingBox.getLeftTopOffset()).add(lastVelocity.getRelativeLocation(tickDelta)), boundingBox.getWidth(), boundingBox.getHeight(), 0xffee0000);
+	}
+	void tick() noexcept override {
+		Vector2D vel;
+		if (interactManager.getKey(VK_UP).isPressed()) vel.add(0, -0.1);
+		if (interactManager.getKey(VK_DOWN).isPressed()) vel.add(0, 0.1);
+		if (interactManager.getKey(VK_LEFT).isPressed()) vel.add(-0.1, 0);
+		if (interactManager.getKey(VK_RIGHT).isPressed()) vel.add(0.1, 0);
+		setVelocity(vel);
+		Entity::tick();
+	}
+	void onDamage(Damage&) override {}
+	void onDeath() override {}
+
+	static Player* create(const Vector2D& location) noexcept { return allocatedFor(new Player(location)); }
 };

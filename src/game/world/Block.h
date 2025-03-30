@@ -7,6 +7,7 @@
 #include "..\..\def.h"
 #include "..\..\utils\gc.h"
 #include "Location.h"
+#include "..\gameDef.h"
 
 class [[carlbeks::predecl, carlbeks::defineat("World.h")]] World;
 
@@ -30,14 +31,58 @@ public:
 	 * 渲染方块本体。渲染范围不应当超过方块占据的范围。
 	 */
 	void render(double tickDelta) const noexcept override = 0;
+
+	/**
+	 * @brief 调整一个实体与该方块交互时的速度。
+	 * @param entity 目标实体
+	 * @param position 实体当前判定到的位置
+	 * @param velocity 可以直接进行截短调整的速度
+	 * @param side 碰撞方向
+	 * @returns (bool) true - 进行了修改; false - 没有进行修改
+	 * @attention 函数内方块状态不要发生变化。该函数只是试探性调整速度，且只进行速度的截短，并不是真正的碰撞交互。
+	 */
+	virtual bool adaptEntityVelocity(Entity& entity, const Vector2D& position, Vector2D& velocity, const CollidingSide side) const {
+		Vector2D adapted = velocity;
+		switch (side) {
+			case CollidingSide::LEFT_TOP:
+			case CollidingSide::LEFT_BOTTOM:
+			case CollidingSide::LEFT: {
+				adapted.extendValueX(location.getX() - entity.getBoundingBox().getRight() - position.getX());
+				if (adapted.lengthManhattan() >= velocity.lengthManhattan()) return false;
+				return velocity = adapted, true;
+			}
+			case CollidingSide::TOP: {
+				adapted.extendValueY(location.getY() - entity.getBoundingBox().getBottom() - position.getY());
+				if (adapted.lengthManhattan() >= velocity.lengthManhattan()) return false;
+				return velocity = adapted, true;
+			}
+			case CollidingSide::RIGHT_TOP:
+			case CollidingSide::RIGHT_BOTTOM:
+			case CollidingSide::RIGHT: {
+				adapted.extendValueX(location.getX() + 1 + entity.getBoundingBox().getLeft() - position.getX());
+				if (adapted.lengthManhattan() >= velocity.lengthManhattan()) return false;
+				return velocity = adapted, true;
+			}
+			case CollidingSide::BOTTOM: {
+				adapted.extendValueY(location.getY() + 1 + entity.getBoundingBox().getTop() - position.getY());
+				if (adapted.lengthManhattan() >= velocity.lengthManhattan()) return false;
+				return velocity = adapted, true;
+			}
+			default: // COVER此处也不做处理，既然穿过来了那就穿过来了吧
+				break;
+		}
+		return false;
+	}
 };
 
 class PureBarrierBlock final : public Block {
+	unsigned int color = 0xffeeeeee;
 	PureBarrierBlock(const BlockLocation& location) : Block(location) {}
-	~PureBarrierBlock() override {}
+	~PureBarrierBlock() override = default;
 
 public:
-	void render(double tickDelta) const noexcept override { renderer.fillWorldBlock(getLocation(), 0xffeeeeee); }
+	void render(double tickDelta) const noexcept override { renderer.fillWorldBlock(getLocation(), color); }
 	void tick() noexcept override {}
+	void setColor(const unsigned int color) noexcept { this->color = color; }
 	static PureBarrierBlock* create(const BlockLocation& location) { return allocatedFor(new PureBarrierBlock(location)); }
 };
