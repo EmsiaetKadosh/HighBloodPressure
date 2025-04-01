@@ -104,56 +104,52 @@ class PublicLogger final {
 public:
 	const String name;
 
-	PublicLogger(const String& name): name(L" [" + name + L"] ") {
-		std::wcout << L"PublicLogger created\n";
-		std::wcout.imbue(std::locale("zh-CN.UTF-8"));
-		mainLogger.truncate().open();
-	}
+	PublicLogger(const String& name);
 
 	PublicLogger& put(const String& msg) noexcept {
-		String str = L"          " + name + L"        " + msg + L"\n";
+		const String& str = L"          " + name + L"        " + msg + L"\n";
 		std::wcout << str;
 		mainLogger << str;
 		return *this;
 	}
 
 	PublicLogger& trace(const String& msg) noexcept {
-		String str = build(msg, L"[Trace] ");
+		const String& str = build(msg, L"[Trace] ");
 		std::wcout << str;
 		mainLogger << str;
 		return *this;
 	}
 
 	PublicLogger& debug(const String& msg) noexcept {
-		String str = build(msg, L"[Debug] ");
+		const String& str = build(msg, L"[Debug] ");
 		std::wcout << str;
 		mainLogger << str;
 		return *this;
 	}
 
 	PublicLogger& log(const String& msg) noexcept {
-		String str = build(msg, L"[Log]   ");
+		const String& str = build(msg, L"[Log]   ");
 		std::wcout << str;
 		mainLogger << str;
 		return *this;
 	}
 
 	PublicLogger& info(const String& msg) noexcept {
-		String str = build(msg, L"[Info]  ");
+		const String& str = build(msg, L"[Info]  ");
 		std::wcout << str;
 		mainLogger << str;
 		return *this;
 	}
 
 	PublicLogger& warn(const String& msg) noexcept {
-		String str = build(msg, L"[Warn]  ");
+		const String& str = build(msg, L"[Warn]  ");
 		std::wcout << str;
 		mainLogger << str;
 		return *this;
 	}
 
 	PublicLogger& error(const String& msg) noexcept {
-		String str = build(msg, L"[Error] ");
+		const String& str = build(msg, L"[Error] ");
 		std::wcout << str;
 		mainLogger << str;
 		return *this;
@@ -178,7 +174,7 @@ public:
 		stream << L"          " << name << L"        " << msg;
 		prints(stream, other...);
 		stream << std::endl;
-		String str = stream.str();
+		const String& str = stream.str();
 		mainLogger << str;
 		std::wcout << str;
 		return *this;

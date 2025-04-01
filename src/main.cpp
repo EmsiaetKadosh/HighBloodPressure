@@ -271,15 +271,28 @@ Time lastTick = getCurrentTime();
 
 void gameThread() {
 	try {
+		Time lastTps = getCurrentTime();
+		unsigned int tickCount = 0;
 		while (isRunning) {
 			const Time thisTime = getCurrentTime();
 			if (thisTime - lastTick < std::chrono::milliseconds(interactSettings.constants.msPerTick)) {
 				Sleep(1);
 				continue;
 			}
+			if (thisTime - lastTps >= std::chrono::seconds(1)) {
+				renderer.tps = static_cast<double>(tickCount) / static_cast<double>((thisTime - lastTps).count());
+				tickCount = 0;
+				lastTps = thisTime;
+			}
+			tickCount += 10'000'000;
+			game.currentTickFlag.atomicAcquire();
+			std::atomic_thread_fence(std::memory_order_acquire);
+			lastTick = thisTime;
+			++game.currentTick;
+			std::atomic_thread_fence(std::memory_order_acquire);
+			game.currentTickFlag.atomicRelease();
 			game.tick();
 			renderer.tick();
-			lastTick = thisTime;
 		}
 	} catch (const Exception& e) {
 		Logger.error(L"Game thread exception: " + e.getMessage());
@@ -299,14 +312,27 @@ void renderThread() {
 			renderer.syncSize(clientRect.right - clientRect.left, clientRect.bottom - clientRect.top);
 			renderer.requireResize();
 		}
-		Time lastRender = getCurrentTime();
+		Time lastRender = getCurrentTime(), lastFps = lastRender;
+		unsigned int frameCount = 0;
 		while (isRunning) {
 			const Time thisTime = getCurrentTime();
 			if (thisTime - lastRender < std::chrono::milliseconds(interactSettings.constants.msPerRender)) {
 				Sleep(1);
 				continue;
 			}
-			game.render(nRange(static_cast<double>((thisTime - lastTick) / std::chrono::milliseconds(interactSettings.constants.msPerRender)), 0.0, 1.0));
+			if (thisTime - lastFps >= std::chrono::seconds(1)) {
+				renderer.fps = static_cast<double>(frameCount) / static_cast<double>((thisTime - lastFps).count());
+				frameCount = 0;
+				lastFps = thisTime;
+			}
+			frameCount += 10'000'000;
+			game.currentTickFlag.atomicAcquire();
+			std::atomic_thread_fence(std::memory_order_acquire);
+			const Time lastTickFetch = lastTick;
+			const QWORD tickRendering = game.currentTick;
+			std::atomic_thread_fence(std::memory_order_acquire);
+			game.currentTickFlag.atomicRelease();
+			game.render(nRange(static_cast<double>((thisTime - lastTickFetch).count()) * 0.000'08 / static_cast<double>(interactSettings.constants.msPerTick), 0.0, 1.0), tickRendering);
 			lastRender = thisTime;
 		}
 	} catch (const Exception& e) {
@@ -527,12 +553,11 @@ LRESULT __stdcall HookProc(const int code, const WPARAM wParam, const LPARAM lPa
 int __stdcall MessageLoop() {
 	MSG msg = { nullptr };
 	const HACCEL hAccelTable = LoadAcceleratorsW(MainInstance, MAKEINTRESOURCE(109));
-	while (GetMessageW(&msg, nullptr, 0, 0)) {
+	while (GetMessageW(&msg, nullptr, 0, 0))
 		if (!TranslateAcceleratorW(msg.hwnd, hAccelTable, &msg)) {
 			TranslateMessage(&msg);
 			DispatchMessageW(&msg);
 		}
-	}
 	DestroyAcceleratorTable(hAccelTable);
 	return static_cast<int>(msg.wParam);
 }

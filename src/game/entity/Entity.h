@@ -169,23 +169,50 @@ public:
 	};
 
 private:
+	friend class Garbage<Velocity>;
 	friend class EntityManager;
+	friend class Entity;
 	friend class World;
 	Vector<Period> periods;
 
 public:
 	Velocity() noexcept = default;
+	~Velocity() noexcept = default;
 
 	[[nodiscard]] Vector2D getRelativeLocation(double tickDelta) const noexcept {
-		Vector2D ret{};
+		Vector2D ret;
 		for (const auto& [movement, tickLasts] : periods)
-			if (tickLasts > tickDelta) {
+			if (tickDelta > tickLasts) {
 				tickDelta -= tickLasts;
 				ret += movement;
 			}
-			else if (tickLasts != 0) ret += movement * (tickDelta / tickLasts);
+			else if (tickLasts != 0) ret += movement * nRange(tickDelta / tickLasts, 0.0, 1.0);
 		return ret; // 此处估计是tickDelta大于1了，反正无所谓，已经全部加起来了
 	}
+
+	[[nodiscard]] String toString() const noexcept {
+		std::wostringstream stream;
+		for (const auto& [movement, tickLasts] : periods) stream << L"\n    movement: " << movement.toString() << L"\n    tickLasts: " << tickLasts << L"\n  --------";
+		return stream.str();
+	}
+};
+
+// ReSharper disable once CppClassCanBeFinal : Extended by AtomicStorage<EntityMomentum>
+class EntityMomentum {
+	friend class Entity;
+	friend class World;
+	Location location;
+	Velocity velocity;
+	QWORD locationTick = 0;
+	QWORD velocityTick = 0;
+
+public:
+	EntityMomentum(const Location& location, const Velocity& velocity) noexcept : location(location), velocity(velocity) {}
+	virtual ~EntityMomentum() noexcept = default;
+	[[nodiscard]] const Location& getLocation() const noexcept { return location; }
+	[[nodiscard]] const Velocity& getVelocity() const noexcept { return velocity; }
+	[[nodiscard]] QWORD getLocationTick() const noexcept { return locationTick; }
+	[[nodiscard]] QWORD getVelocityTick() const noexcept { return velocityTick; }
 };
 
 interface IDamageable {
@@ -214,15 +241,14 @@ class Entity : public IRenderable, public ITickable {
 
 protected:
 	BoundingBox boundingBox;
-	Location location;
+	AtomicStorage<EntityMomentum> momentum;
 	Vector2D velocity;
-	Velocity lastVelocity;
 	double maxSpeed = 1.0;
 
-	Entity(const Vector2D& location) : location(location) {}
+	Entity(const Vector2D& location) : momentum(location, Velocity()) {}
 	~Entity() override = default;
 
-	void processVelocity() noexcept;
+	virtual void updatePosition() noexcept;
 
 public:
 	virtual void onRemove() { gc.submit<Entity>(this); }
@@ -236,14 +262,26 @@ public:
 	virtual void postDamageTaken(Damage&) {}
 	virtual void onApplyDamage(Damage&) {}
 	virtual void onBlockDamage(Damage&) {}
-	void tick() noexcept override { processVelocity(); }
+	void tick() noexcept override;
 	void setVelocity(const Vector2D& velocity) noexcept { this->velocity = velocity; }
+	void teleport(const Vector2D& location) noexcept;
+	void changeWorld(WorldID id, bool discardMovements = true) noexcept;
 	[[nodiscard]] const BoundingBox& getBoundingBox() const noexcept { return this->boundingBox; }
-	[[nodiscard]] const Location& getLocation() const noexcept { return this->location; }
-	[[nodiscard]] const Location& getLocation(const double tickDelta) const noexcept { return Location(this->location.getPosition() + this->velocity * tickDelta, this->location.getWorld()); }
+	[[nodiscard]] Location getLocation() const noexcept { return momentum.location; }
 	[[nodiscard]] Vector2D getVelocity() const noexcept { return this->velocity; }
 	[[nodiscard]] double getMaxSpeed() const noexcept { return this->maxSpeed; }
-	[[nodiscard]] RECT getCoveringBlocks() const noexcept { return boundingBox.getCoveringBlocks(location.getPosition()); }
+	[[nodiscard]] RECT getCoveringBlocks() const noexcept { return boundingBox.getCoveringBlocks(momentum.location.getPosition()); }
+
+	/**
+	 * @brief 根据tickDelta和tickRendering获取Location。因为一些原因，请在外部记得
+	 * @code this->momentum.atomicAcquire() @endcode
+	 */
+	[[nodiscard]] Location getLocation(const double tickDelta, const QWORD tickRendering) const noexcept {
+		// const AtomicGuard guard = momentum.atomicGuard();
+		if (momentum.locationTick < tickRendering) return momentum.location.getPosition().add(momentum.velocity.getRelativeLocation(2));
+		if (momentum.locationTick == tickRendering && momentum.velocityTick == tickRendering) return momentum.location.getPosition().add(momentum.velocity.getRelativeLocation(tickDelta));
+		return momentum.location; // 可能的情况：location和velocity都是上一tick的；location是这一tick的，但是velocity还是上一tick的；location是下一tick的
+	}
 };
 
 class Enemy : public Entity, public IDamageable, public IArtificialIntelligent {
@@ -255,6 +293,7 @@ class EntityManager {
 	friend class Game;
 	EntityID nextID = 0;
 	Map<EntityID, Entity*> entities; // 所有实体
+	using IterEntity = Map<EntityID, Entity*>::const_iterator;
 	EntityManager() = default;
 	~EntityManager() { for (auto& [id, entity] : entities) entity->onRemove(); }
 
@@ -274,5 +313,11 @@ public:
 		entities.erase(entity->idEntity);
 		entity->onRemove();
 		Success();
+	}
+
+	[[nodiscard]] Entity* getEntity(const EntityID id) const noexcept {
+		const IterEntity iter = entities.find(id);
+		if (iter == entities.end()) return nullptr;
+		return iter->second;
 	}
 };

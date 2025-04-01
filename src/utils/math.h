@@ -26,12 +26,20 @@ template <typename T>
 bool nBetween(const T& val, const T& min, const T& max) { return val >= min && val <= max; }
 
 template <typename T>
+bool nSideBetween(const T& val, const T& min, const T& max) { return min <= val && val < max; }
+
+template <typename T>
 bool nSamePositivity(const T& val, const T& other) { return (val <= 0 && other <= 0) || (val >= 0 && other >= 0); }
 
 template <typename T>
 consteval T nConsteval(T val) { return val; }
 
 inline bool dEquals(const double v1, const double v2) { return std::abs(v1 - v2) < DBL_EPSILON; }
+inline String dtoString(const double val) {
+	std::wostringstream stream;
+	stream << std::setprecision(std::numeric_limits<double>::digits10 + 1) << val;
+	return stream.str();
+}
 
 template <typename T>
 void nMinMaxOf(QWORD& outMin, QWORD& outMax, const QWORD total, const T values[]) {
@@ -236,7 +244,7 @@ public:
 
 	[[nodiscard]] Vector2D nearestPointFromNormalized(const Vector2D& point, const Vector2D& direction) const noexcept { return point + direction * clone().subtract(point).dot(direction); }
 
-	[[nodiscard]] String toString() const noexcept { return L"(" + std::to_wstring(x) + L", " + std::to_wstring(y) + L")"; }
+	[[nodiscard]] String toString() const noexcept { return L"(" + dtoString(x) + L", " + dtoString(y) + L")"; }
 };
 
 inline Vector2D operator*(const double scalar, const Vector2D& vector) noexcept { return vector * scalar; }

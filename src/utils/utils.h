@@ -238,7 +238,6 @@ inline NanoDuration getRunTime() noexcept {
 //
 // StackTrace
 //
-
 inline void printStackTrace(const std::stacktrace& stacktrace, int maxCount = 5, const int type = 0) noexcept {
 	if (!maxCount) return;
 	std::wstringstream ss;
@@ -263,3 +262,71 @@ inline void printStackTrace(const unsigned int skip = 0, const int maxCount = 5,
 	const std::stacktrace stack = std::stacktrace::current(1 + skip);
 	printStackTrace(stack, maxCount, type);
 }
+
+//
+// AtomicStorage | MultiThread
+//
+namespace $LimitedAccess {
+	class AtomicStorageBase;
+}
+
+class AtomicGuard {
+	friend class $LimitedAccess::AtomicStorageBase;
+	const $LimitedAccess::AtomicStorageBase* storage;
+	AtomicGuard(const $LimitedAccess::AtomicStorageBase* storage);
+
+public:
+	AtomicGuard(const AtomicGuard&) = delete;
+	AtomicGuard(AtomicGuard&& other) noexcept : storage(other.storage) { other.storage = nullptr; }
+	~AtomicGuard() noexcept;
+	AtomicGuard& operator=(const AtomicGuard& other) = delete;
+
+	AtomicGuard& operator=(AtomicGuard&& other) noexcept {
+		if (this == &other) return *this;
+		storage = other.storage;
+		other.storage = nullptr;
+		return *this;
+	}
+};
+
+class $LimitedAccess::AtomicStorageBase {
+	mutable Boolean atomicFlag = false;
+	mutable bool atomicActiveFlag = true;
+
+protected:
+	virtual ~AtomicStorageBase() { atomicActiveFlag = false; }
+
+public:
+	void atomicAcquire() const noexcept {
+		bool expected;
+		while (expected = false, atomicActiveFlag && !atomicFlag.compare_exchange_strong(expected, true));
+	}
+
+	void atomicRelease() const noexcept {
+		bool expected;
+		while (expected = true, atomicActiveFlag && !atomicFlag.compare_exchange_strong(expected, false));
+	}
+
+	bool atomicActive() const noexcept { return atomicActiveFlag; }
+	bool atomicAcquired() const noexcept { return atomicFlag; }
+	AtomicGuard atomicGuard() const noexcept { return AtomicGuard(this); }
+};
+
+template <typename T>
+// ReSharper disable once CppClassCanBeFinal
+struct AtomicStorage : T, $LimitedAccess::AtomicStorageBase {
+	template <typename... Args>
+	AtomicStorage(Args&&... args) : T(std::forward<Args>(args)...) {}
+
+	~AtomicStorage() noexcept override {}
+};
+
+template <>
+struct AtomicStorage<void> final : $LimitedAccess::AtomicStorageBase {};
+
+inline AtomicGuard::AtomicGuard(const $LimitedAccess::AtomicStorageBase* storage): storage(storage) {
+	requireNonnull(storage);
+	storage->atomicAcquire();
+}
+
+inline AtomicGuard::~AtomicGuard() noexcept { if (storage && storage->atomicActive() && storage->atomicAcquired()) storage->atomicRelease(); }

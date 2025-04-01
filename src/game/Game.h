@@ -14,6 +14,7 @@ class [[carlbeks::predecl, carlbeks::defineat("Entity.h")]] EntityManager;
 
 class Game final /* : public IRenderable, public ITickable */ {
 	friend void gameThread();
+	friend void renderThread();
 	WindowManager windows;
 	Hud hud = Hud(); // 8
 	CaptionWindow* caption; // 8
@@ -26,6 +27,13 @@ public:
 	WorldManager* worldManager = nullptr;
 	EntityManager* entityManager = nullptr;
 
+private:
+	/**
+	 * 此变量只用于在renderThread和gameThread中同步renderThread启动渲染瞬时获取的currentTick
+	 */
+	AtomicStorage<void> currentTickFlag;
+
+public:
 	void initialize();
 	Game();
 	~Game();
@@ -34,7 +42,7 @@ public:
 	[[nodiscard]] FloatWindow& getFloatWindow() const noexcept { return *floatWindow; }
 	[[nodiscard]] QWORD getTick() const noexcept { return currentTick; }
 	void tick() noexcept;
-	void render(double tickDelta) const noexcept;
+	void render(double tickDelta, QWORD tickRendering) const noexcept;
 
 	/**
 	 * 所有窗口都提交给Game保管，在适当时刻自动删除。
@@ -55,7 +63,6 @@ public:
 
 	[[nodiscard]] Window* getWindow() const noexcept {
 		if (auto* const back = windows.back()) return dynamic_cast<Window*>(back);
-		Logger.error(L"Game::getWindow returns nullptr");
 		return nullptr;
 	}
 

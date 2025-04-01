@@ -11,7 +11,7 @@
 void Game::initialize() {
 	worldManager = allocatedFor(new WorldManager);
 	entityManager = allocatedFor(new EntityManager);
-	setWindow(StartWindow::create());
+	// setWindow(StartWindow::create());
 	windows.onResize();
 }
 
@@ -36,20 +36,20 @@ Game::~Game() {
 	gc.collect();
 }
 
-void Game::render(const double tickDelta) const noexcept {
+void Game::render(const double tickDelta, const QWORD tickRendering) const noexcept {
 	if (renderer.checkResizing()) return;
 	renderer.gameStartRender();
-	if (worldManager->current) worldManager->current->render(tickDelta);
-	caption->render(tickDelta);
-	hud.render(tickDelta);
-	windows.render(tickDelta);
-	floatWindow->render(tickDelta);
+	if (worldManager->current) worldManager->current->render(tickDelta, tickRendering);
+	caption->render(tickDelta, tickRendering);
+	hud.render(tickDelta, tickRendering);
+	windows.render(tickDelta, tickRendering);
+	floatWindow->render(tickDelta, tickRendering);
 	renderer.gameEndRender();
 	gc.pack();
 }
 
 void Game::tick() noexcept {
-	++currentTick;
+	// ++currentTick; // 托管到gameThread完成
 	if (worldManager->current) worldManager->current->tick();
 	floatWindow->clear();
 	floatWindow->tick();

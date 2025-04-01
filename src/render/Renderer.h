@@ -21,7 +21,7 @@ enum class UILocation : char { LEFT_TOP, LEFT, LEFT_BOTTOM, TOP, CENTER, BOTTOM,
 
 interface IRenderable {
 	virtual ~IRenderable() = default;
-	virtual void render(double tickDelta) const noexcept = 0;
+	virtual void render(double tickDelta, QWORD tickRendering) const noexcept = 0;
 };
 
 interface ITickable {
@@ -95,9 +95,10 @@ class Renderer final : public ITickable {
 	bool isRendering = false; // 1
 	bool isResizing = false; // 1
 	bool isResizeRequired = false; // 1
-	char refreshedHDC = -1;
+	char refreshedHDC = -1; // 1
 
 public:
+	double fps = 0, tps = 0;
 	byte reserved[4]{}; // 4
 	Task resizeReloadBitmap{nullptr};
 
@@ -151,7 +152,7 @@ private:
 			if (!DeleteObject(*iter)) {
 				Logger.error(L"DeleteObject failed again. Deleting: " + qwtowb16(reinterpret_cast<QWORD>(*iter)) + L", LastError: " + std::to_wstring(GetLastError()));
 				if ($deleteObject(obj)) Logger.info(L"DeleteObject failure: Invalid HGIDOBJ");
-				else { failed.push_back(*iter); }
+				else failed.push_back(*iter);
 			}
 		if (obj && !DeleteObject(obj)) {
 			Logger.error(L"DeleteObject failed. Deleting: " + qwtowb16(reinterpret_cast<QWORD>(obj)) + L", LastError: " + std::to_wstring(GetLastError()));

@@ -17,6 +17,8 @@ void Renderer::gameStartRender() noexcept {
 }
 
 void Renderer::gameEndRender() noexcept {
+	fontManager.get(1).draw(L"FPS: " + std::to_wstring(fps), 0, interactSettings.actual.captionHeight, 0xffee0000);
+	fontManager.get(1).draw(L"TPS: " + std::to_wstring(tps), 0, interactSettings.actual.captionHeight + interactSettings.actual.fontHeight, 0xffee0000);
 	isRendering = false;
 	BitBlt(MainDC, 0, 0, windowWidth, windowHeight, canvasDC, 0, 0, SRCCOPY);
 	if (isResizing) {

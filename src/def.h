@@ -33,6 +33,7 @@ using String = std::wstring;
 using Thread = std::thread;
 using Time = std::chrono::time_point<std::chrono::system_clock>;
 using NanoDuration = std::chrono::duration<long long, std::nano>;
+using Boolean = std::atomic_bool;
 template <typename K, typename V, typename Cmp = std::less<K>, typename Alloc = std::allocator<std::pair<const K, V>>>
 using Map = std::map<K, V, Cmp, Alloc>;
 template <typename T, typename Comparator = std::less<T>, typename Allocator = std::allocator<T>>
@@ -43,20 +44,24 @@ template <typename T, typename Allocator = std::allocator<T>>
 using Vector = std::vector<T, Allocator>;
 template <typename F>
 using Function = std::function<F>;
+template <typename T>
+using Atomic = std::atomic<T>;
 
 #define Success() { return 0; }
 #define Failed() { return 1; }
 #define Error() { return -1; }
 #define Comment(PARAMS) /##/ PARAMS
 #define SameAs(PARAMS) Comment(PARAMS)
+#define pass // ((void) 0)
 
-//NOLINTNEXTLINE(*-reserved-identifier)
+	//NOLINTNEXTLINE(*-reserved-identifier)
 #define _WINSOCKAPI_ /* 防止winsock.h被引入。winsock.h和winsock2.h冲突。 */
 #if false
 #include <WinSock2.h>
 #endif
 
 #define NOMINMAX
+
 #include <Windows.h>
 #include <Windowsx.h>
 #include <minwindef.h>
@@ -155,7 +160,7 @@ T* deallocating$(T* value, const String& stack) {
 	if ($LimitedUse::memoryManager.allocated.contains(value)) info = &$LimitedUse::memoryManager.allocated.at(value);
 	$LimitedUse::printDeallocate(value, info ? info->size : 0, info ? info->msg : L"???");
 #endif
-	if (value) { if (!$LimitedAccess::memoryManager.allocated.erase(value)) $LimitedAccess::printDeallocateWarning(value, L"value not recorded" + stack); }
+	if (value) if (!$LimitedAccess::memoryManager.allocated.erase(value)) $LimitedAccess::printDeallocateWarning(value, L"value not recorded" + stack);
 	$LimitedAccess::memoryManager.acquiring.store(false);
 	return value;
 }
@@ -216,8 +221,8 @@ public:
 	template <NewMoveable T> requires std::is_base_of_v<Base, T> && TypeName<T>
 	void set(T&& value);
 
-	template<TypeName T, typename ...ConstructorParams>
-	T& allocate(ConstructorParams&& ...params) {
+	template <TypeName T, typename... ConstructorParams>
+	T& allocate(ConstructorParams&&... params) {
 		if (hasValue) delete deallocating(value);
 		value = allocatedFor(new T(std::forward<ConstructorParams>(params)...));
 		return *value;

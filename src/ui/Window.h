@@ -65,7 +65,7 @@ public:
 	Widget(const double x, const double y, const double w, const double h, const UILocation location) : x(x), y(y), w(w), h(h), location(location) {}
 
 	unsigned int colorSelector(const Color& clr) const;
-	void render(double tickDelta) const noexcept override;
+	void render(double tickDelta, QWORD tickRendering) const noexcept override;
 
 	Widget& alignLocation(const UILocation loc) noexcept {
 		location = loc;
@@ -156,7 +156,7 @@ protected:
 
 public:
 	int pop() noexcept override;
-	void render(double tickDelta) const noexcept override;
+	void render(double tickDelta, QWORD tickRendering) const noexcept override;
 	void tick() noexcept override;
 	/**
 	 * 在Game.setWindow()时，本窗口开启时调用。
@@ -181,7 +181,7 @@ public:
 
 class WindowManager final : public AnywhereEditableList<Window, WindowManager>, public IRenderable, public ITickable {
 public:
-	void render(const double tickDelta) const noexcept override { for (const Window& i : *this) i.render(tickDelta); }
+	void render(const double tickDelta, QWORD tickRendering) const noexcept override { for (const Window& i : *this) i.render(tickDelta, tickRendering); }
 	void tick() noexcept override { for (Window& i : *this) i.tick(); }
 	int pop(Window* value) noexcept override;
 	void clear() noexcept;
@@ -193,7 +193,7 @@ public:
 	CaptionWindow();
 	bool onOpen() override;
 	void onClose() override;
-	void render(double tickDelta) const noexcept override;
+	void render(double tickDelta, QWORD tickRendering) const noexcept override;
 	void onResize() override;
 };
 
@@ -214,7 +214,7 @@ public:
 
 	void push(const ObjectHolder<RenderableString>& string) const { if (strings.ptrNew()) strings.getNew().push_back(string); }
 	void push(ObjectHolder<RenderableString>&& string) const { if (strings.ptrNew()) strings.getNew().push_back(std::move(string)); }
-	void render(double tickDelta) const noexcept override;
+	void render(double tickDelta, QWORD tickRendering) const noexcept override;
 	void tick() noexcept override {}
 	bool onOpen() override { return true; }
 	void onClose() override {}
@@ -227,7 +227,7 @@ public:
 	Animation animation = Animation().features(Animation::AS_CUBIC).setDuration(20);
 	Button(const double x, const double y, const double w, const double h, const UILocation location, const ObjectHolder<IText>& text) : Widget(x, y, w, h, location), name(text) {}
 	Button(const double x, const double y, const double w, const double h, const UILocation location, ObjectHolder<IText>&& text) : Widget(x, y, w, h, location), name(std::move(text)) {}
-	void render(double tickDelta) const noexcept override;
+	void render(double tickDelta, QWORD tickRendering) const noexcept override;
 };
 
 
@@ -245,13 +245,13 @@ private:
 public:
 	~ConfirmWindow() override = default; // 不需要delete，析构时Window会自动delete
 
-	void render(const double tickDelta) const noexcept override {
+	void render(const double tickDelta, QWORD tickRendering) const noexcept override {
 		int w, h;
 		w = renderer.getWidth(), h = renderer.getHeight();
 		w >>= 2, h >>= 2;
 		renderer.fill(w, h, w + w, h + h, 0xcc222222);
 		fontManager.getDefault().drawCenter(text->getRenderableString(), w, h, w + w, h + (h >> 1), 0xffeeeeee);
-		for (const ObjectHolder<Widget>& widget : widgets) widget->render(tickDelta);
+		for (const ObjectHolder<Widget>& widget : widgets) widget->render(tickDelta, tickRendering);
 	}
 
 	ConfirmWindow& requireConfirm(const Function<void(Button&)>& func = {});

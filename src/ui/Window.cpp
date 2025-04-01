@@ -6,6 +6,7 @@
 
 #include "..\game\Animation.h"
 #include "..\game\Game.h"
+#include "..\game\world\World.h"
 #include "..\interact\InteractManager.h"
 
 int Window::pop() noexcept {
@@ -13,7 +14,7 @@ int Window::pop() noexcept {
 	Success();
 }
 
-void Window::render(const double tickDelta) const noexcept { for (const Widget* widget : widgets) widget->render(tickDelta); }
+void Window::render(const double tickDelta, QWORD tickRendering) const noexcept { for (const Widget* widget : widgets) widget->render(tickDelta, tickRendering); }
 
 void Window::tick() noexcept {
 	for (Widget* widget : widgets) widget->tick();
@@ -98,7 +99,7 @@ CaptionWindow::CaptionWindow() {
 	options->onTick = [](const Widget& self, MouseButtonCode) {
 		if (self.containsMouse()) {
 			game.getFloatWindow().push(TranslatableText(L"hbp.float.settings").getRenderableString());
-			game.getFloatWindow().push(LiteralText(L"\\.ffee0000\\#ff000000中键调用GetLastError()").getRenderableString());
+			game.getFloatWindow().push(LiteralText(L"\\.ffee0000\\#ff000000中键获取位置信息").getRenderableString());
 			game.getFloatWindow().push(TranslatableText(L"hbp.float.freshCanvas").getRenderableString());
 		}
 	};
@@ -106,7 +107,10 @@ CaptionWindow::CaptionWindow() {
 		if (static_cast<int>(MouseButtonCodeEnum::MBC_R_CHANGE) & code) {
 			Logger.info(L"try resize: " + std::to_wstring(renderer.getWidth()) + L" " + std::to_wstring(renderer.getHeight()) + L", sync: " + std::to_wstring(renderer.getSyncWidth()) + L" " + std::to_wstring(renderer.getSyncHeight()));
 			renderer.requireResize();
-		} else if (static_cast<int>(MouseButtonCodeEnum::MBC_M_CHANGE) & code) Logger.info(L"LastError: " + std::to_wstring(GetLastError()));
+		} else if (static_cast<int>(MouseButtonCodeEnum::MBC_M_CHANGE) & code) {
+			Logger.info(L"LastError: " + std::to_wstring(GetLastError()));
+			Logger.info(game.entityManager->getEntity(1)->getLocation().getPosition().toString());
+		}
 	};
 	options->absolute();
 	options->backgroundColor.hover = 0xffcccccc;
@@ -122,9 +126,9 @@ CaptionWindow::CaptionWindow() {
 bool CaptionWindow::onOpen() { throw InvalidOperationException(L"Should not open CaptionWindow"); }
 void CaptionWindow::onClose() { throw InvalidOperationException(L"Should not close CaptionWindow"); }
 
-void CaptionWindow::render(const double tickDelta) const noexcept {
+void CaptionWindow::render(const double tickDelta, QWORD tickRendering) const noexcept {
 	renderer.fill(0, 0, renderer.getWidth(), interactSettings.actual.captionHeight, 0xff666666);
-	for (const Widget* widget : widgets) widget->render(tickDelta);
+	for (const Widget* widget : widgets) widget->render(tickDelta, tickRendering);
 }
 
 void CaptionWindow::onResize() {
@@ -148,7 +152,7 @@ void CaptionWindow::onResize() {
 	Window::onResize();
 }
 
-void FloatWindow::render(double tickDelta) const noexcept {
+void FloatWindow::render(double tickDelta, QWORD tickRendering) const noexcept {
 	if (not interactManager.isInWindow()) {
 		strings.async();
 		return;
@@ -191,7 +195,7 @@ unsigned int Widget::colorSelector(const Color& clr) const {
 	return clr.hover;
 }
 
-void Widget::render(double tickDelta) const noexcept { renderer.fill(left, top, width, height, colorSelector(backgroundColor)); }
+void Widget::render(double tickDelta, QWORD tickRendering) const noexcept { renderer.fill(left, top, width, height, colorSelector(backgroundColor)); }
 
 void Widget::onResize() {
 	if (isAbsoluteLocation) {
@@ -279,8 +283,8 @@ void Widget::onResize() {
 	}
 }
 
-void Button::render(const double tickDelta) const noexcept {
-	Widget::render(tickDelta);
+void Button::render(const double tickDelta, QWORD tickRendering) const noexcept {
+	Widget::render(tickDelta, tickRendering);
 	if (name) fontManager.getDefault().drawCenter(name->getRenderableString(), left, top, width, height, colorSelector(foregroundColor));
 }
 

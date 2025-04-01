@@ -1,183 +1,278 @@
-BasedOnStyle: llvm
-# https://clang.llvm.org/docs/ClangFormatStyleOptions.html
-# https://www.cnblogs.com/PaulpauL/p/5929753.html
-
-# Comments Macros:
-#   WIN = Whatever. If Needed, you can change it as you like.
-#   WSO = Whatever. If needed, you can change, but keep same in One code block.
-#   BTW = Better This but you can change as you like, Whatever.
-#
-# 在标识后紧跟默认值，再后跟所有可能取值
-
+# ClangFormatConfigureSource: 'clang-format-file://E:/ProjectSaves/HighBloodPressure/.clang-format'
+---
 Language: Cpp
-DisableFormat: false # WIN false, true 如果为true，不应用整理
-
-AccessModifierOffset: -4 # or 0 public, private, protected的缩进
-AlignAfterOpenBracket: false
+AccessModifierOffset: -4
+AlignAfterOpenBracket: DontAlign
 AlignArrayOfStructures: None
 AlignConsecutiveAssignments:
-  Enabled: false # WIN false, true
-  AcrossEmptyLines: true # WIN true, false 跨过空行一并对齐
-  AcrossComments: true # WIN true, false 跨过注释一并对齐
-  AlignCompound: false # WIN false, true += -=诸如此类运算符是否对齐
-  AlignFunctionPointers: true # WIN true, false 函数指针变量是否对齐
-  PadOperators: false # WIN false, true <<= >>=
+  Enabled: false
+  AcrossEmptyLines: true
+  AcrossComments: true
+  AlignCompound: false
+  AlignFunctionPointers: true
+  PadOperators: false
 AlignConsecutiveBitFields:
-  Enabled: false # WIN false, true
-  AcrossEmptyLines: true # WIN true, false 跨过空行一并对齐
-  AcrossComments: true # WIN true, false 跨过注释一并对齐
+  Enabled: false
+  AcrossEmptyLines: true
+  AcrossComments: true
+  AlignCompound: false
+  AlignFunctionPointers: false
+  PadOperators: false
 AlignConsecutiveDeclarations:
-  Enabled: false # WIN false, true
-  AcrossEmptyLines: true # WIN true, false 跨过空行一并对齐
-  AcrossComments: true # WIN true, false 跨过注释一并对齐
-AlignConsecutiveMacros: false # WIN false, true
+  Enabled: false
+  AcrossEmptyLines: true
+  AcrossComments: true
+  AlignCompound: false
+  AlignFunctionPointers: false
+  PadOperators: false
+AlignConsecutiveMacros:
+  Enabled: false
+  AcrossEmptyLines: false
+  AcrossComments: false
+  AlignCompound: false
+  AlignFunctionPointers: false
+  PadOperators: true
 AlignConsecutiveShortCaseStatements:
-  Enabled: false # WIN false, true
-  AcrossEmptyLines: true # WIN true, false 跨过空行一并对齐
-  AcrossComments: true # WIN true, false 跨过注释一并对齐
-  AlignCaseColons: false # WIN false, true 是否对齐case VAL冒号
-AlignEscapedNewlines: DontAlign # WIN false, true 是否对齐反斜杠\
+  Enabled: false
+  AcrossEmptyLines: true
+  AcrossComments: true
+  AlignCaseArrows: false
+  AlignCaseColons: false
+AlignConsecutiveTableGenBreakingDAGArgColons:
+  Enabled: false
+  AcrossEmptyLines: false
+  AcrossComments: false
+  AlignCompound: false
+  AlignFunctionPointers: false
+  PadOperators: false
+AlignConsecutiveTableGenCondOperatorColons:
+  Enabled: false
+  AcrossEmptyLines: false
+  AcrossComments: false
+  AlignCompound: false
+  AlignFunctionPointers: false
+  PadOperators: false
+AlignConsecutiveTableGenDefinitionColons:
+  Enabled: false
+  AcrossEmptyLines: false
+  AcrossComments: false
+  AlignCompound: false
+  AlignFunctionPointers: false
+  PadOperators: false
+AlignEscapedNewlines: DontAlign
 AlignOperands: DontAlign
 AlignTrailingComments:
-  Kind: Leave # BTW: Leave, Always|Never
-  OverEmptyLines: 1 # BTW: 1, 最多跨过多少行一并对对齐
-AllowAllArgumentsOnNextLine: true # 如果false，强制把函数参数每个换行
-AllowAllParametersOfDeclarationOnNextLine: true # 如果false，强制把函数形参每个换行
-AllowBreakBeforeNoexceptSpecifier: Always # 是否允许复合noexcept换行 Never|OnlyWithParen
-AllowShortBlocksOnASingleLine: Always # WIN Always, Empty|Never
-AllowShortCaseLabelsOnASingleLine: false # WIN true, false
-AllowShortCompoundRequirementOnASingleLine: true # BTW true, false
-AllowShortEnumsOnASingleLine: true # WIN true, false
-AllowShortFunctionsOnASingleLine: All # WIN All, None|InlineOnly|Empty|Inline
-AllowShortIfStatementsOnASingleLine: AllIfsAndElse # WIN AllIfsAndElse, Never|WithoutElse|OnlyFirstIf
-AllowShortLambdasOnASingleLine: All # BTW All, None|Empty|Inline
-AllowShortLoopsOnASingleLine: true # WIN true, false
-AlwaysBreakBeforeMultilineStrings: false # WIN false, true
-AttributeMacros: [
-  '__capability',
-  '__output',
-  '__unused'
-] # WIN, i dont know what this is.
-BinPackArguments: true # WIN true, false
-BinPackParameters: true # WIN true, false
+  Kind: Leave
+  OverEmptyLines: 1
+AllowAllArgumentsOnNextLine: true
+AllowAllParametersOfDeclarationOnNextLine: true
+AllowBreakBeforeNoexceptSpecifier: Always
+AllowShortBlocksOnASingleLine: Always
+AllowShortCaseExpressionOnASingleLine: true
+AllowShortCaseLabelsOnASingleLine: false
+AllowShortCompoundRequirementOnASingleLine: true
+AllowShortEnumsOnASingleLine: true
+AllowShortFunctionsOnASingleLine: All
+AllowShortIfStatementsOnASingleLine: AllIfsAndElse
+AllowShortLambdasOnASingleLine: All
+AllowShortLoopsOnASingleLine: true
+AlwaysBreakAfterDefinitionReturnType: None
+AlwaysBreakBeforeMultilineStrings: false
+AttributeMacros:
+  - __capability
+  - __output
+  - __unused
+BinPackArguments: true
+BinPackParameters: BinPack
+BitFieldColonSpacing: Both
+BracedInitializerIndentWidth: 4
 BraceWrapping:
-  # WIN false, true
   AfterCaseLabel: false
   AfterClass: false
-  AfterControlStatement: Never # WIN Never, MultiLine|Always
+  AfterControlStatement: Never
   AfterEnum: false
+  AfterExternBlock: false
   AfterFunction: false
   AfterNamespace: false
-  AfterObjCDeclaration: false # Objective-C用，Cpp应该不用
+  AfterObjCDeclaration: false
   AfterStruct: false
   AfterUnion: false
-  AfterExternBlock: false
-  # WIN true, false
   BeforeCatch: true
   BeforeElse: true
-  BeforeLambdaBody: false # BTW false, true
-  BeforeWhile: true
-  # BTW false, true
-  IndentBraces: false # 仅当花括号换行时有效
-  SplitEmptyFunction: false # 如果为true，空函数右花括号}强制换行
-  SplitEmptyRecord: false # 如果为true，空类型class union union...右花括号}强制换行
-  SplitEmptyNamespace: false # 如果为true，空namespace右花括号}强制换行
-BracedInitializerIndentWidth: 4 # 如果该项不存在，则使用ContinuationIndentWidth
-BreakAdjacentStringLiterals: false # WIN false, true 是否给连续字面char[]""换行
-BreakAfterAttributes: Leave # WIN Leave, Always|Never 是否对[[]]后换行，尽可能不换行
+  BeforeLambdaBody: false
+  BeforeWhile: false
+  IndentBraces: false
+  SplitEmptyFunction: false
+  SplitEmptyRecord: false
+  SplitEmptyNamespace: false
+BreakAdjacentStringLiterals: false
+BreakAfterAttributes: Leave
 BreakAfterJavaFieldAnnotations: false
-# BreakArrays: true 似乎非C++
-BreakBeforeBinaryOperators: All # BTW All, None|NonAssignment
-# BTW Attach,
-#   Linux       Break function, namespace, class
-#  |Mozilla     Break enum, function, class, struct, union
-#  |Stroustrup  Break function, catch, else(?)
-#  |Allman      Break all
-#  |Whitesmiths Break and indent all
-#  |GNU         Break all, extra indent control statements
-#  |WebKit      Break function
-#  |Custom      根据BraceWrapping指定行为
+BreakAfterReturnType: None
+BreakArrays: true
+BreakBeforeBinaryOperators: All
+BreakBeforeConceptDeclarations: Always
 BreakBeforeBraces: Attach
-BreakBeforeInlineASMColon: Never # WIN Never, OnlyMultiline|Always
-BreakBeforeTernaryOperators: true # 如果为true，三元运算符需要换行时将运算符置于下一行开头而非上一行末尾
-# WIN AfterColon, 将冒号和逗号至于上一行行尾
-#   BeforeColon 将冒号置于下一行开头，逗号置于上一行行尾
-#  |BeforeComma 将冒号、逗号都置于下一行开头
+BreakBeforeInlineASMColon: Never
+BreakBeforeTernaryOperators: true
+BreakBinaryOperations: Never
 BreakConstructorInitializers: AfterColon
-# BreakFunctionDefinitionParameters: false # 如果true，函数定义中的形参永远换行，好像不能用
-# WIN AfterColon, 将冒号和逗号至于上一行行尾
-#   BeforeColon 将冒号置于下一行开头，逗号置于上一行行尾
-#  |BeforeComma 将冒号、逗号都置于下一行开头
-#  |AfterComma  第一行的冒号不换行，只在所有的逗号后面换行
+BreakFunctionDefinitionParameters: false
 BreakInheritanceList: AfterColon
-BreakStringLiterals: false # WIN false, true 如果为true，过长的字符串会被换行
-# BreakTemplateDeclarations: No # WIN No, Leave|MultiLine|Yes，好像不能用
-AlwaysBreakTemplateDeclarations: false
-ColumnLimit: 0 # BTW 0 设置代码宽度，0为忽略。应该会用于判断是否要换行
-# 如果为true，可以在文件头标注 // CommentPragmas: '^ FOOBAR pragma:'
-#   那么以后的诸如// FOOBAR pragma: 开头的注释不会被换行
-CommentPragmas: true
-CompactNamespaces: false # BTW false, true 如果为true，连续的namespace声明会被放在同一行里，除非太长
-# 构造函数参数列表和继承列表的缩进
-ConstructorInitializerIndentWidth: 4 # 4 or 2，尽量与IndentWidth一致
-ContinuationIndentWidth: 2 # 4 or 2，尽量与IndentWidth一致
-Cpp11BracedListStyle: false # 如果为false，花括号里有东西的时候，会在左花括号右侧、右花括号左侧插入空格
-# BTW false, true
-# 如果为true，会检查文件里最常出现的一种&和*的安排方式，然后统一；
-#   PointerAlignment指定的选项时备选
+BreakStringLiterals: false
+BreakTemplateDeclarations: No
+ColumnLimit: 0
+CommentPragmas: 'true'
+CompactNamespaces: false
+ConstructorInitializerIndentWidth: 4
+ContinuationIndentWidth: 2
+Cpp11BracedListStyle: false
 DerivePointerAlignment: false
-# WIN Leave, public protected private后是否要插入空行
-#   Never|Always
-#  |(仅*After*)LogicalBlock 如果没有指定任何东西的访问权限，那么就不插入空行
-# 根据代码复杂度决定是否要留空行。可以不固定
+DisableFormat: false
 EmptyLineAfterAccessModifier: Leave
 EmptyLineBeforeAccessModifier: Leave
-# WIN false, true
-# 在namespace的右花括号后加入注释。
-# 如果namespace短于ShortNamespaceLines规定的值，就不添加
-# 根据需要
+ExperimentalAutoDetectBinPacking: false
 FixNamespaceComments: false
-# BTW Preserve, 中间没有空行的include一起整理
-#   Merge 无视空行，全部一起整理
-#  |Regroup 按照<>和""重新分组整理
+ForEachMacros:
+  - foreach
+  - Q_FOREACH
+  - BOOST_FOREACH
+IfMacros:
+  - KJ_IF_MAYBE
 IncludeBlocks: Preserve
-
-
-
-
-
+IncludeCategories:
+  - Regex: '^"(llvm|llvm-c|clang|clang-c)/'
+    Priority: 2
+    SortPriority: 0
+    CaseSensitive: false
+  - Regex: '^(<|"(gtest|gmock|isl|json)/)'
+    Priority: 3
+    SortPriority: 0
+    CaseSensitive: false
+  - Regex: '.*'
+    Priority: 1
+    SortPriority: 0
+    CaseSensitive: false
+IncludeIsMainRegex: '(Test)?$'
+IncludeIsMainSourceRegex: ''
+IndentAccessModifiers: false
+IndentCaseBlocks: false
 IndentCaseLabels: true
 IndentExternBlock: Indent
+IndentGotoLabels: true
+IndentPPDirectives: None
+IndentRequiresClause: true
 IndentWidth: 2
+IndentWrappedFunctionNames: false
+InsertBraces: false
 InsertNewlineAtEOF: true
-KeepEmptyLinesAtEOF: true
+InsertTrailingCommas: None
+IntegerLiteralSeparator:
+  Binary: 0
+  BinaryMinDigits: 0
+  Decimal: 0
+  DecimalMinDigits: 0
+  Hex: 0
+  HexMinDigits: 0
+JavaScriptQuotes: Leave
+JavaScriptWrapImports: true
+KeepEmptyLines:
+  AtEndOfFile: true
+  AtStartOfBlock: true
+  AtStartOfFile: true
+LambdaBodyIndentation: Signature
 LineEnding: CRLF
-NamespaceIndentation: All # WIN
+MacroBlockBegin: ''
+MacroBlockEnd: ''
+MainIncludeChar: Quote
+MaxEmptyLinesToKeep: 1
+NamespaceIndentation: All
+ObjCBinPackProtocolList: Auto
+ObjCBlockIndentWidth: 2
+ObjCBreakBeforeNestedBlockParam: true
+ObjCSpaceAfterProperty: false
+ObjCSpaceBeforeProtocolList: true
 PackConstructorInitializers: NextLine
+PenaltyBreakAssignment: 2
+PenaltyBreakBeforeFirstCallParameter: 19
+PenaltyBreakComment: 300
+PenaltyBreakFirstLessLess: 120
+PenaltyBreakOpenParenthesis: 0
+PenaltyBreakScopeResolution: 500
+PenaltyBreakString: 1000
 PenaltyBreakTemplateDeclaration: 4294967295
+PenaltyExcessCharacter: 1000000
+PenaltyIndentedWhitespace: 0
+PenaltyReturnTypeOnItsOwnLine: 60
 PointerAlignment: Left
+PPIndentWidth: -1
+QualifierAlignment: Leave
 ReferenceAlignment: Left
 ReflowComments: false
-RemoveSemicolon: true # WIN
+RemoveBracesLLVM: false
+RemoveParentheses: Leave
+RemoveSemicolon: true
 RequiresClausePosition: SingleLine
+RequiresExpressionIndentation: OuterScope
 SeparateDefinitionBlocks: Always
-SortIncludes: Never # BTW: Never，有时候includes必须要按照一定的顺序。
+ShortNamespaceLines: 1
+SkipMacroDefinitionBody: false
+SortIncludes: Never
+SortJavaStaticImport: Before
 SortUsingDeclarations: Lexicographic
 SpaceAfterCStyleCast: true
-SpaceAfterTemplateKeyword: false # WSO
-SpaceAroundPointerQualifiers: Before # WSO
-SpacesBeforeTrailingComments: 1 # Better 1; 0 ok, 2+ better not.
+SpaceAfterLogicalNot: false
+SpaceAfterTemplateKeyword: false
+SpaceAroundPointerQualifiers: Before
+SpaceBeforeAssignmentOperators: true
+SpaceBeforeCaseColon: false
+SpaceBeforeCpp11BracedList: false
+SpaceBeforeCtorInitializerColon: true
+SpaceBeforeInheritanceColon: true
+SpaceBeforeJsonColon: false
+SpaceBeforeParens: ControlStatements
+SpaceBeforeParensOptions:
+  AfterControlStatements: true
+  AfterForeachMacros: true
+  AfterFunctionDefinitionName: false
+  AfterFunctionDeclarationName: false
+  AfterIfMacros: true
+  AfterOverloadedOperator: false
+  AfterPlacementOperator: true
+  AfterRequiresInClause: false
+  AfterRequiresInExpression: false
+  BeforeNonEmptyParentheses: false
+SpaceBeforeRangeBasedForLoopColon: true
+SpaceBeforeSquareBrackets: false
+SpaceInEmptyBlock: false
+SpacesBeforeTrailingComments: 1
+SpacesInAngles: Never
+SpacesInContainerLiterals: true
+SpacesInLineCommentPrefix:
+  Minimum: 1
+  Maximum: -1
+SpacesInParens: Never
+SpacesInParensOptions:
+  ExceptDoubleParentheses: false
+  InCStyleCasts: false
+  InConditionalStatements: false
+  InEmptyParentheses: false
+  Other: false
+SpacesInSquareBrackets: false
 Standard: Latest
-TabWidth: 2 # 4 or 2, WSO
-# UseTab possible values:
-#   Never
-#   ForIndentation
-#   ForContinuationAndIndentation
-#   AlignWithSpaces
-#   Always
-# 如果使用Tab缩进对齐，整理原理是：
-#   使用Tab符替换空格，缩进一定是4，每TabWidth个空格替换为一个Tab。
-#   也就是说，如果TabWidth是2，那么每次缩进会使用2个Tab。
-#   使用Tab时，请一定把TabWidth设为4。
-UseTab: Always # WIN
-
+StatementAttributeLikeMacros:
+  - Q_EMIT
+StatementMacros:
+  - Q_UNUSED
+  - QT_REQUIRE_VERSION
+TableGenBreakInsideDAGArg: DontBreak
+TabWidth: 2
+UseTab: Always
+VerilogBreakBetweenInstancePorts: true
+WhitespaceSensitiveMacros:
+  - BOOST_PP_STRINGIZE
+  - CF_SWIFT_NAME
+  - NS_SWIFT_NAME
+  - PP_STRINGIZE
+  - STRINGIZE
+...

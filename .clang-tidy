@@ -35,6 +35,7 @@ Checks: >
   -hicpp-avoid-c-arrays,
   -hicpp-explicit-conversions,
   -hicpp-member-init,
+  -hicpp-no-array-decay,
   -hicpp-signed-bitwise,
   -hicpp-use-auto,
   -llvm-header-guard,

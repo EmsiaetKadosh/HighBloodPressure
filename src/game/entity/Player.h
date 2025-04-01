@@ -4,6 +4,7 @@
 
 #pragma once
 
+#include "..\Game.h"
 #include "Entity.h"
 
 /**
@@ -29,18 +30,27 @@
  * 【主】猪突猛进：血压50%以上时，主动启动猪突猛进，在下一次闪避之前，取消【被】静如止水，改为按血压值额外增加奔跑速度，奔跑时少量消耗血压，不奔跑时快速增加血压
 */
 class Player final : public Entity, public IDamageable {
-	Player(const Vector2D& location) : Entity(location) {}
+	Player(const Vector2D& location) : Entity(location) {
+		boundingBox.setLeft(0.3);
+		boundingBox.setRight(0.3);
+		boundingBox.setTop(1.2);
+	}
 
 public:
-	void render(double tickDelta) const noexcept override {
-		renderer.fillWorld(location.getPosition().add(boundingBox.getLeftTopOffset()).add(lastVelocity.getRelativeLocation(tickDelta)), boundingBox.getWidth(), boundingBox.getHeight(), 0xffee0000);
+	void render(const double tickDelta, const QWORD tickRendering) const noexcept override {
+		momentum.atomicAcquire();
+		const Vector2D& vec = getLocation(tickDelta, tickRendering).getPosition().add(boundingBox.getLeftTopOffset());
+		renderer.fillWorld(vec, boundingBox.getWidth(), boundingBox.getHeight(), 0xff44ee66);
+		// Logger.log(vec.toString() + L" " + dtoString(tickDelta) + L" " + std::to_wstring(tickRendering) + L" " + std::to_wstring(momentum.getLocationTick()) + L" " + std::to_wstring(momentum.getVelocityTick()));
+		momentum.atomicRelease();
 	}
 	void tick() noexcept override {
+		updatePosition();
 		Vector2D vel;
-		if (interactManager.getKey(VK_UP).isPressed()) vel.add(0, -0.1);
-		if (interactManager.getKey(VK_DOWN).isPressed()) vel.add(0, 0.1);
-		if (interactManager.getKey(VK_LEFT).isPressed()) vel.add(-0.1, 0);
-		if (interactManager.getKey(VK_RIGHT).isPressed()) vel.add(0.1, 0);
+		if (interactManager.getKey(VK_UP).isPressed()) vel.add(0, -0.36);
+		if (interactManager.getKey(VK_DOWN).isPressed()) vel.add(0, 0.36);
+		if (interactManager.getKey(VK_LEFT).isPressed()) vel.add(-0.36, 0);
+		if (interactManager.getKey(VK_RIGHT).isPressed()) vel.add(0.36, 0);
 		setVelocity(vel);
 		Entity::tick();
 	}

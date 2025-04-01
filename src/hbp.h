@@ -16,4 +16,4 @@ inline HINSTANCE MainInstance;
 inline HWND MainWindowHandle;
 inline Thread GameThread;
 inline Thread RenderThread;
-inline bool isRunning = ShowConsoleIO();
+inline bool isRunning = true;

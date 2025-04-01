@@ -30,7 +30,7 @@ public:
 	/**
 	 * 渲染方块本体。渲染范围不应当超过方块占据的范围。
 	 */
-	void render(double tickDelta) const noexcept override = 0;
+	void render(double tickDelta, QWORD tickRendering) const noexcept override = 0;
 
 	/**
 	 * @brief 调整一个实体与该方块交互时的速度。
@@ -47,24 +47,24 @@ public:
 			case CollidingSide::LEFT_TOP:
 			case CollidingSide::LEFT_BOTTOM:
 			case CollidingSide::LEFT: {
-				adapted.extendValueX(location.getX() - entity.getBoundingBox().getRight() - position.getX());
+				adapted.extendValueX(location.getX() - entity.getBoundingBox().getRight() - position.getX() - 1e-9);
 				if (adapted.lengthManhattan() >= velocity.lengthManhattan()) return false;
 				return velocity = adapted, true;
 			}
 			case CollidingSide::TOP: {
-				adapted.extendValueY(location.getY() - entity.getBoundingBox().getBottom() - position.getY());
+				adapted.extendValueY(location.getY() - entity.getBoundingBox().getBottom() - position.getY() - 1e-9);
 				if (adapted.lengthManhattan() >= velocity.lengthManhattan()) return false;
 				return velocity = adapted, true;
 			}
 			case CollidingSide::RIGHT_TOP:
 			case CollidingSide::RIGHT_BOTTOM:
 			case CollidingSide::RIGHT: {
-				adapted.extendValueX(location.getX() + 1 + entity.getBoundingBox().getLeft() - position.getX());
+				adapted.extendValueX(location.getX() + 1 + entity.getBoundingBox().getLeft() - position.getX() + 1e-9);
 				if (adapted.lengthManhattan() >= velocity.lengthManhattan()) return false;
 				return velocity = adapted, true;
 			}
 			case CollidingSide::BOTTOM: {
-				adapted.extendValueY(location.getY() + 1 + entity.getBoundingBox().getTop() - position.getY());
+				adapted.extendValueY(location.getY() + 1 + entity.getBoundingBox().getTop() - position.getY() + 1e-9);
 				if (adapted.lengthManhattan() >= velocity.lengthManhattan()) return false;
 				return velocity = adapted, true;
 			}
@@ -81,7 +81,7 @@ class PureBarrierBlock final : public Block {
 	~PureBarrierBlock() override = default;
 
 public:
-	void render(double tickDelta) const noexcept override { renderer.fillWorldBlock(getLocation(), color); }
+	void render(double tickDelta, QWORD tickRendering) const noexcept override { renderer.fillWorldBlock(getLocation(), color); }
 	void tick() noexcept override {}
 	void setColor(const unsigned int color) noexcept { this->color = color; }
 	static PureBarrierBlock* create(const BlockLocation& location) { return allocatedFor(new PureBarrierBlock(location)); }

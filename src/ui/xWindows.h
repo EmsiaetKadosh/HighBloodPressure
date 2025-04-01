@@ -34,8 +34,8 @@ public:
 	static StartWindow* create() noexcept { return allocatedFor(new StartWindow()); }
 	void onClose() override { pop(); }
 
-	void render(const double tickDelta) const noexcept override {
+	void render(const double tickDelta, QWORD tickRendering) const noexcept override {
 		fontManager.getDefault().drawCenter(title.getRenderableString(), 0, 0, renderer.getWidth(), renderer.getHeight());
-		Window::render(tickDelta);
+		Window::render(tickDelta, tickRendering);
 	}
 };
