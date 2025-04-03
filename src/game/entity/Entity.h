@@ -143,12 +143,34 @@ public:
 	 * 获取在position处该碰撞箱直接覆盖到的方块。BlockLocation对应的范围是[return.left, return.right); [return.top, return.bottom)
 	 */
 	[[nodiscard]] RECT getCoveringBlocks(const Vector2D& position) const noexcept {
+		if constexpr (false) {
+			RECT ret;
+			const double
+				left = position.getX() - getLeft(),
+				top = position.getY() - getTop(),
+				right = position.getX() + getRight(),
+				bottom = position.getY() + getBottom();
+			double temp;
+			if (dEquals(left, temp = std::ceil(left))) ret.left = static_cast<long>(temp);
+			else ret.left = static_cast<long>(std::floor(left));
+			if (dEquals(right, temp = std::floor(right))) ret.right = static_cast<long>(temp);
+			else ret.right = static_cast<long>(std::ceil(right));
+			if (dEquals(top, temp = std::ceil(top))) ret.top = static_cast<long>(temp);
+			else ret.top = static_cast<long>(std::floor(top));
+			if (dEquals(bottom, temp = std::floor(bottom))) ret.bottom = static_cast<long>(temp);
+			else ret.bottom = static_cast<long>(std::ceil(bottom));
+			return ret;
+		}
 		return {
 			.left = static_cast<long>(std::floor(position.getX() - getLeft())),
 			.top = static_cast<long>(std::floor(position.getY() - getTop())),
 			.right = static_cast<long>(std::ceil(position.getX() + getRight())),
 			.bottom = static_cast<long>(std::ceil(position.getY() + getBottom()))
 		};
+	}
+
+	[[nodiscard]] String toString(const Vector2D& position) const {
+		return L"left = " + dtoString(position.getX() - left) + L", right = " + dtoString(position.getX() + right) + L", top = " + dtoString(position.getY() - top) + L", bottom = " + dtoString(position.getY() + bottom);
 	}
 };
 
@@ -197,33 +219,23 @@ public:
 	}
 };
 
-// ReSharper disable once CppClassCanBeFinal : Extended by AtomicStorage<EntityMomentum>
-class EntityMomentum {
+class EntityMomentum final : public AtomicStorage {
 	friend class Entity;
 	friend class World;
+	Location lastLocation;
+	Velocity lastVelocity;
 	Location location;
 	Velocity velocity;
 	QWORD locationTick = 0;
 	QWORD velocityTick = 0;
 
 public:
-	EntityMomentum(const Location& location, const Velocity& velocity) noexcept : location(location), velocity(velocity) {}
-	virtual ~EntityMomentum() noexcept = default;
+	EntityMomentum(const Location& location, const Velocity& velocity) noexcept : lastLocation(location), lastVelocity(velocity), location(location), velocity(velocity) {}
+	~EntityMomentum() noexcept override = default;
 	[[nodiscard]] const Location& getLocation() const noexcept { return location; }
 	[[nodiscard]] const Velocity& getVelocity() const noexcept { return velocity; }
 	[[nodiscard]] QWORD getLocationTick() const noexcept { return locationTick; }
 	[[nodiscard]] QWORD getVelocityTick() const noexcept { return velocityTick; }
-};
-
-interface IDamageable {
-protected:
-	double maxHealth = 0;
-	double health = 0;
-
-public:
-	virtual ~IDamageable() = default;
-	virtual void onDamage(Damage&) = 0;
-	virtual void onDeath() = 0;
 };
 
 interface IArtificialIntelligent {
@@ -241,9 +253,13 @@ class Entity : public IRenderable, public ITickable {
 
 protected:
 	BoundingBox boundingBox;
-	AtomicStorage<EntityMomentum> momentum;
+	EntityMomentum momentum;
 	Vector2D velocity;
+	Vector2D accelerate;
 	double maxSpeed = 1.0;
+	double maxHealth = 100;
+	double health = 100;
+	bool onGround = true;
 
 	Entity(const Vector2D& location) : momentum(location, Velocity()) {}
 	~Entity() override = default;
@@ -262,15 +278,22 @@ public:
 	virtual void postDamageTaken(Damage&) {}
 	virtual void onApplyDamage(Damage&) {}
 	virtual void onBlockDamage(Damage&) {}
-	void tick() noexcept override;
+	virtual void checkOnGround() noexcept;
+	virtual void onDamage(Damage& damage);
+	virtual void onDeath();
+	void tick() noexcept(false) override;
+	void render(double tickDelta, QWORD tickRendering) const noexcept override;
 	void setVelocity(const Vector2D& velocity) noexcept { this->velocity = velocity; }
 	void teleport(const Vector2D& location) noexcept;
 	void changeWorld(WorldID id, bool discardMovements = true) noexcept;
+	void setOnGround(const bool val) noexcept { onGround = val; }
 	[[nodiscard]] const BoundingBox& getBoundingBox() const noexcept { return this->boundingBox; }
 	[[nodiscard]] Location getLocation() const noexcept { return momentum.location; }
 	[[nodiscard]] Vector2D getVelocity() const noexcept { return this->velocity; }
 	[[nodiscard]] double getMaxSpeed() const noexcept { return this->maxSpeed; }
 	[[nodiscard]] RECT getCoveringBlocks() const noexcept { return boundingBox.getCoveringBlocks(momentum.location.getPosition()); }
+	[[nodiscard]] EntityMomentum& getMomentum() noexcept { return this->momentum; }
+	[[nodiscard]] bool isOnGround() const noexcept { return onGround; }
 
 	/**
 	 * @brief 根据tickDelta和tickRendering获取Location。因为一些原因，请在外部记得
@@ -278,13 +301,14 @@ public:
 	 */
 	[[nodiscard]] Location getLocation(const double tickDelta, const QWORD tickRendering) const noexcept {
 		// const AtomicGuard guard = momentum.atomicGuard();
-		if (momentum.locationTick < tickRendering) return momentum.location.getPosition().add(momentum.velocity.getRelativeLocation(2));
+		// assert momentum.locationTick <= tickRendering && momentum.velocityTick <= tickRendering;
 		if (momentum.locationTick == tickRendering && momentum.velocityTick == tickRendering) return momentum.location.getPosition().add(momentum.velocity.getRelativeLocation(tickDelta));
-		return momentum.location; // 可能的情况：location和velocity都是上一tick的；location是这一tick的，但是velocity还是上一tick的；location是下一tick的
+		if (momentum.locationTick > tickRendering) return momentum.lastLocation.getPosition().add(momentum.lastVelocity.getRelativeLocation(tickDelta));
+		return momentum.location.getPosition().add(momentum.velocity.getRelativeLocation(tickDelta));
 	}
 };
 
-class Enemy : public Entity, public IDamageable, public IArtificialIntelligent {
+class Enemy : public Entity, public IArtificialIntelligent {
 protected:
 	Enemy(const Vector2D& location) : Entity(location) {}
 };
@@ -321,3 +345,19 @@ public:
 		return iter->second;
 	}
 };
+
+class EntityList;
+
+class EntityEntry final : public AnywhereEditable<EntityEntry, EntityList> {
+public:
+	Entity* const entity;
+	EntityEntry(Entity* const entity) : entity(entity) {}
+	Entity* operator->() const noexcept { return this->entity; }
+	Entity& operator*() const noexcept { return *this->entity; }
+};
+
+class EntityList final : public AnywhereEditableList<EntityEntry, EntityList> {
+
+};
+
+

@@ -7,6 +7,9 @@
 #include "..\warnings.h"
 #include "..\def.h"
 
+inline constexpr double EpsilonValue = 1e-10;
+inline constexpr double EpsilonCheck = 1e-8;
+
 template <typename T>
 const T& nMin(const T& a, const T& b) { return a < b ? a : b; }
 
@@ -17,7 +20,7 @@ template <typename T>
 const T& nMax(const T& a, const T& b) { return a > b ? a : b; }
 
 template <typename T>
-const T& nMax(const T& val0, const T& val1, const T& vals...) { return nMax(nMin(val0, val1), nMax(vals...)); }
+const T& nMax(const T& val0, const T& val1, const T& vals...) { return nMax(nMax(val0, val1), nMax(vals...)); }
 
 template <typename T>
 const T& nRange(const T& val, const T& min, const T& max) { return nMax(nMin(val, max), min); }
@@ -34,7 +37,12 @@ bool nSamePositivity(const T& val, const T& other) { return (val <= 0 && other <
 template <typename T>
 consteval T nConsteval(T val) { return val; }
 
-inline bool dEquals(const double v1, const double v2) { return std::abs(v1 - v2) < DBL_EPSILON; }
+inline bool dEquals(const double v1, const double v2) noexcept { return std::abs(v1 - v2) < EpsilonCheck; }
+inline bool dLess(const double v1, const double v2) noexcept { return v1 < v2 && !dEquals(v1, v2); }
+inline bool dGreater(const double v1, const double v2) noexcept { return v1 > v2 && !dEquals(v1, v2); }
+inline bool dLessEquals(const double v1, const double v2) noexcept { return v1 < v2 || dEquals(v1, v2); }
+inline bool dGreaterEquals(const double v1, const double v2) noexcept { return v1 > v2 || dEquals(v1, v2); }
+
 inline String dtoString(const double val) {
 	std::wostringstream stream;
 	stream << std::setprecision(std::numeric_limits<double>::digits10 + 1) << val;
@@ -78,7 +86,6 @@ public:
 	[[nodiscard]] Vector3D operator/(const double scalar) const noexcept { return Vector3D(x / scalar, y / scalar, z / scalar); }
 	[[nodiscard]] Vector3D operator-() const noexcept { return Vector3D(-x, -y, -z); }
 	[[nodiscard]] double operator*(const Vector3D& other) const noexcept { return x * other.x + y * other.y + z * other.z; }
-	[[nodiscard]] double length() const noexcept { return std::sqrt(x * x + y * y + z * z); }
 	[[nodiscard]] double lengthManhattan() const noexcept { return std::abs(x) + std::abs(y) + std::abs(z); }
 	bool operator==(const Vector3D& other) const noexcept { return x == other.x && y == other.y && z == other.z; }
 	bool operator!=(const Vector3D& other) const noexcept { return x != other.x || y != other.y || z != other.z; }
@@ -106,6 +113,20 @@ public:
 	[[nodiscard]] Vector3D cross(const Vector3D& other) const noexcept { return Vector3D(y * other.z - z * other.y, z * other.x - x * other.z, x * other.y - y * other.x); }
 	[[nodiscard]] bool isZero() const noexcept { return x == 0 && y == 0 && z == 0; }
 	[[nodiscard]] bool sameDirectionAs(const Vector3D& other) const noexcept { return isZero() || other.isZero() || dot(other) < other.length() * length() * DBL_EPSILON; }
+
+	[[nodiscard]] double length() const noexcept {
+		if (x == 0) {
+			if (y == 0) return std::abs(z);
+			if (z == 0) return std::abs(y);
+			return sqrt(y * y + z * z);
+		}
+		if (y == 0) {
+			if (z == 0) return std::abs(x);
+			return sqrt(x * x + z * z);
+		}
+		if (z == 0) return std::sqrt(x * x + y * y);
+		return std::sqrt(x * x + y * y + z * z);
+	}
 
 	[[nodiscard]] Vector3D getNormalized() const noexcept {
 		if (isZero()) return Vector3D(0.0, 0.0, 0.0);
@@ -143,6 +164,19 @@ public:
 		return point + normalized * clone().subtract(point).dot(normalized);
 	}
 
+	Vector3D& strictSelect(const Vector3D& other) noexcept {
+		if (other.x > 0) x = x > 0 ? nMin(x, other.x) : 0;
+		else if (other.x < 0) x = x < 0 ? nMax(x, other.x) : 0;
+		else x = 0;
+		if (other.y > 0) y = y > 0 ? nMin(y, other.y) : 0;
+		else if (other.y < 0) y = y < 0 ? nMax(y, other.y) : 0;
+		else y = 0;
+		if (other.z > 0) z = z > 0 ? nMin(z, other.z) : 0;
+		else if (other.z < 0) z = z < 0 ? nMax(z, other.z) : 0;
+		else z = 0;
+		return *this;
+	}
+
 	[[nodiscard]] String toString() const noexcept { return L"(" + std::to_wstring(x) + L", " + std::to_wstring(y) + L", " + std::to_wstring(z) + L")"; }
 };
 
@@ -166,7 +200,6 @@ public:
 	[[nodiscard]] Vector2D operator/(const double scalar) const noexcept { return Vector2D(x / scalar, y / scalar); }
 	[[nodiscard]] Vector2D operator-() const noexcept { return Vector2D(-x, -y); }
 	[[nodiscard]] double operator*(const Vector2D& other) const noexcept { return x * other.x + y * other.y; }
-	[[nodiscard]] double length() const noexcept { return std::sqrt(x * x + y * y); }
 	[[nodiscard]] double lengthManhattan() const noexcept { return std::abs(x) + std::abs(y); }
 	bool operator==(const Vector2D& other) const noexcept { return x == other.x && y == other.y; }
 	bool operator!=(const Vector2D& other) const noexcept { return x != other.x || y != other.y; }
@@ -193,6 +226,12 @@ public:
 	[[nodiscard]] Vector3D cross(const Vector2D& other) const noexcept { return Vector3D(0, 0, x * other.y - y * other.x); }
 	[[nodiscard]] bool isZero() const noexcept { return x == 0.0 && y == 0.0; }
 	[[nodiscard]] bool sameDirectionAs(const Vector2D& other) const noexcept { return isZero() || other.isZero() || dot(other) < other.length() * length() * DBL_EPSILON; }
+
+	[[nodiscard]] double length() const noexcept {
+		if (x == 0) return std::abs(y);
+		if (y == 0) return std::abs(x);
+		return std::sqrt(x * x + y * y);
+	}
 
 	[[nodiscard]] Vector2D getNormalized() const noexcept {
 		if (isZero()) return Vector2D(0.0, 0.0);
@@ -243,6 +282,16 @@ public:
 	}
 
 	[[nodiscard]] Vector2D nearestPointFromNormalized(const Vector2D& point, const Vector2D& direction) const noexcept { return point + direction * clone().subtract(point).dot(direction); }
+
+	Vector2D& strictSelect(const Vector2D& other) noexcept {
+		if (other.x > 0) x = x > 0 ? nMin(x, other.x) : 0;
+		else if (other.x < 0) x = x < 0 ? nMax(x, other.x) : 0;
+		else x = 0;
+		if (other.y > 0) y = y > 0 ? nMin(y, other.y) : 0;
+		else if (other.y < 0) y = y < 0 ? nMax(y, other.y) : 0;
+		else y = 0;
+		return *this;
+	}
 
 	[[nodiscard]] String toString() const noexcept { return L"(" + dtoString(x) + L", " + dtoString(y) + L")"; }
 };

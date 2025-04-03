@@ -238,7 +238,7 @@ long __stdcall UnhandledExceptionHandler(PEXCEPTION_POINTERS exception) {
 		L"\n    LastBranchFromRip", ContextRecord->LastBranchFromRip,
 		L"\n   LastExceptionToRip", ContextRecord->LastExceptionToRip,
 		L"\n LastExceptionFromRip", ContextRecord->LastExceptionFromRip
-	);
+		);
 
 	Logger.print(
 		L"\nExceptionRecord:"
@@ -262,7 +262,7 @@ long __stdcall UnhandledExceptionHandler(PEXCEPTION_POINTERS exception) {
 		L"\n      ", ExceptionRecord->ExceptionInformation[12],
 		L"\n      ", ExceptionRecord->ExceptionInformation[13],
 		L"\n      ", ExceptionRecord->ExceptionInformation[14]
-	);
+		);
 	_wsystem(L"pause");
 	return EXCEPTION_EXECUTE_HANDLER;
 }
@@ -272,6 +272,7 @@ Time lastTick = getCurrentTime();
 void gameThread() {
 	try {
 		Time lastTps = getCurrentTime();
+		QWORD nanoSeconds = 0;
 		unsigned int tickCount = 0;
 		while (isRunning) {
 			const Time thisTime = getCurrentTime();
@@ -281,6 +282,8 @@ void gameThread() {
 			}
 			if (thisTime - lastTps >= std::chrono::seconds(1)) {
 				renderer.tps = static_cast<double>(tickCount) / static_cast<double>((thisTime - lastTps).count());
+				Logger.trace(std::to_wstring(tickCount / 10'000'000) + L" ticks cost " + std::to_wstring(nanoSeconds / 10000) + L" ms");
+				nanoSeconds = 0;
 				tickCount = 0;
 				lastTps = thisTime;
 			}
@@ -292,11 +295,11 @@ void gameThread() {
 			std::atomic_thread_fence(std::memory_order_acquire);
 			game.currentTickFlag.atomicRelease();
 			game.tick();
-			renderer.tick();
+			nanoSeconds += (getCurrentTime() - thisTime).count();
 		}
 	} catch (const Exception& e) {
 		Logger.error(L"Game thread exception: " + e.getMessage());
-		printStackTrace(e.getStackTrace());
+		printStackTrace(e.getStackTrace(), -10);
 	}
 	catch (const std::exception& e) { Logger.error(L"Game thread exception (builtin): " + atow(e.what())); }
 	Logger.error(L"Game thread ended.");
@@ -313,6 +316,7 @@ void renderThread() {
 			renderer.requireResize();
 		}
 		Time lastRender = getCurrentTime(), lastFps = lastRender;
+		QWORD nanoSeconds = 0;
 		unsigned int frameCount = 0;
 		while (isRunning) {
 			const Time thisTime = getCurrentTime();
@@ -322,6 +326,8 @@ void renderThread() {
 			}
 			if (thisTime - lastFps >= std::chrono::seconds(1)) {
 				renderer.fps = static_cast<double>(frameCount) / static_cast<double>((thisTime - lastFps).count());
+				Logger.trace(std::to_wstring(frameCount / 10'000'000) + L" frames cost " + std::to_wstring(nanoSeconds / 10000) + L" ms");
+				nanoSeconds = 0;
 				frameCount = 0;
 				lastFps = thisTime;
 			}
@@ -332,12 +338,13 @@ void renderThread() {
 			const QWORD tickRendering = game.currentTick;
 			std::atomic_thread_fence(std::memory_order_acquire);
 			game.currentTickFlag.atomicRelease();
-			game.render(nRange(static_cast<double>((thisTime - lastTickFetch).count()) * 0.000'08 / static_cast<double>(interactSettings.constants.msPerTick), 0.0, 1.0), tickRendering);
+			game.render(nRange(static_cast<double>((thisTime - lastTickFetch).count()) * 0.000'1 / static_cast<double>(interactSettings.constants.msPerTick), 0.0, 1.0), tickRendering);
 			lastRender = thisTime;
+			nanoSeconds += (getCurrentTime() - thisTime).count();
 		}
 	} catch (const Exception& e) {
 		Logger.log(L"Render thread exception: " + e.getMessage());
-		printStackTrace(e.getStackTrace());
+		printStackTrace(e.getStackTrace(), -10);
 	}
 	catch (const std::exception& e) { Logger.log(L"Render thread exception (builtin): " + atow(e.what())); }
 	Logger.error(L"Render thread ended.");
@@ -463,9 +470,8 @@ LRESULT __stdcall WndProc(const HWND hwnd, const UINT uMsg, const WPARAM wParam,
 			}
 			break;
 		case WM_MOUSEWHEEL:
-			interactManager.update(VK_MBUTTON, true);
-			interactManager.update(VK_MBUTTON, true);
-			break;
+			interactManager.updateWheel(GET_WHEEL_DELTA_WPARAM(wParam) / 120);
+			return 0;
 		case WM_MOUSEHOVER:
 			interactManager.mouseHover();
 			break;
@@ -516,12 +522,13 @@ LRESULT __stdcall WndProc(const HWND hwnd, const UINT uMsg, const WPARAM wParam,
 			[[unlikely]]
 		case WM_DESTROY:
 			PostQuitMessage(0);
+			Logger.warn(L"Window destroyed");
 			isRunning = false;
 			return 0;
 			[[unlikely]]
 		case WM_APP_GAMESTART:
 			renderer.requireResize();
-			break;
+			return 0;
 		default:
 			break;
 	}
@@ -616,6 +623,7 @@ int __stdcall wWinMain(const HINSTANCE hInstance, const HINSTANCE, [[maybe_unuse
 		Player* p = Player::create(Vector2D(0.5, 0.5));
 		game.entityManager->addEntity(p);
 		w->addEntity(p, WorldTransportReason::InitialGeneration);
+		renderer.getCamera().setTargetEntity(p);
 		GameThread = Thread(gameThread);
 		RenderThread = Thread(renderThread);
 	}
@@ -626,6 +634,7 @@ int __stdcall wWinMain(const HINSTANCE hInstance, const HINSTANCE, [[maybe_unuse
 	isRunning = false;
 	if (GameThread.joinable()) GameThread.join();
 	if (RenderThread.joinable()) RenderThread.join();
+	Logger.info(L"Thread terminated");
 	UnhookWindowsHookEx(hook);
 	fontManager.finalize();
 	renderer.finalize(false);

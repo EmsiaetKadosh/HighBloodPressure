@@ -9,7 +9,7 @@
 class Hud final : public IRenderable, public ITickable {
 public:
 	void render(double tickDelta, QWORD tickRendering) const noexcept override;
-	void tick() noexcept override;
+	void tick() noexcept(false) override;
 	void onResize() noexcept {}
 };
 

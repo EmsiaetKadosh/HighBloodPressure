@@ -8,6 +8,7 @@
 #include "..\utils\math.h"
 #include "..\utils\exception.h"
 #include "..\utils\Task.h"
+#include "..\game\Animation.h"
 #include "..\interact\InteractManager.h"
 #include "..\game\world\Location.h"
 #include "..\utils\Chars.h"
@@ -26,7 +27,7 @@ interface IRenderable {
 
 interface ITickable {
 	virtual ~ITickable() = default;
-	virtual void tick() noexcept = 0;
+	virtual void tick() noexcept(false) = 0;
 };
 
 struct Color {
@@ -47,18 +48,21 @@ class [[carlbeks::predecl, carlbeks::defineat("Entity.h")]] Entity;
 
 class Camera {
 	Vector2D position; // 当前位置
-	Vector2D velocity; // 移动速度，如果设置了平滑Camera
 	Vector2D targetPosition; // Camera需要移动到的位置
+	Entity* renderingTarget = nullptr;
 	Entity* targeting = nullptr;
+	QWORD updateTick = 0;
 
 public:
-	void setTargetEntity(Entity* target) noexcept { targeting = target; }
+	void render(double tickDelta, QWORD tickRendering) noexcept;
+	void setTargetEntity(Entity* target) noexcept;
+	[[nodiscard]] Entity* getTargetingEntity() const noexcept { return targeting; }
+	[[nodiscard]] Entity* getRenderingTargetEntity() const noexcept { return renderingTarget; }
 	[[nodiscard]] double getCurrentX() const noexcept { return position.getX(); }
 	[[nodiscard]] double getCurrentY() const noexcept { return position.getY(); }
 	[[nodiscard]] double getTargetX() const noexcept { return targetPosition.getX(); }
 	[[nodiscard]] double getTargetY() const noexcept { return targetPosition.getY(); }
 	[[nodiscard]] Vector2D getCurrentPosition() const noexcept { return position; }
-	[[nodiscard]] Vector2D getVelocity() const noexcept { return velocity; }
 	[[nodiscard]] Vector2D getTargetPosition() const noexcept { return targetPosition; }
 };
 
@@ -101,6 +105,9 @@ public:
 	double fps = 0, tps = 0;
 	byte reserved[4]{}; // 4
 	Task resizeReloadBitmap{nullptr};
+	Vector2D mousePointingAtWorld = Vector2D();
+	BlockLocation mousePointingAtBlock = BlockLocation(0, 0, 0);
+	Animation mousePointingAtFlash = Animation().includeReverse().setDuration(40).features(Animation::AS_QUADRATIC).depends(Animation::AD_TIME);
 
 private:
 	void gameStartRender() noexcept;
@@ -206,7 +213,7 @@ public:
 	[[nodiscard]] int getSyncWidth() const noexcept { return syncWidth; }
 	[[nodiscard]] int getSyncHeight() const noexcept { return syncHeight; }
 	[[nodiscard]] bool checkResizing() const noexcept { return isResizing; }
-	void tick() noexcept override {}
+	void tick() noexcept(false) override;
 	/**
 	 * @attention 会忽略A透明度值
 	 * @param argb ARGB式颜色
@@ -219,6 +226,7 @@ public:
 	void resizeStart() noexcept { isResizing = true; }
 	void resizeShow() const noexcept { StretchBlt(MainDC, 0, 0, syncWidth, syncHeight, resizeCopyDC, 0, 0, resizeCopyWidth, resizeCopyHeight, SRCCOPY); }
 	void resizeEnd() noexcept;
+	void renderMouseWorld() noexcept;
 
 	void fill(const int x, const int y, const int w, const int h, const unsigned int color) const {
 		assertRendering();
@@ -246,7 +254,7 @@ public:
 			const HBRUSH clr = CreateSolidBrush(changeColorFormat(color));
 			FillRect(assistDC, &rect, clr);
 			deleteObject(clr);
-			if (!AlphaBlend(canvasDC, x, y, rect.right, rect.bottom, assistDC, 0, 0, rect.right, rect.bottom, blendFunction)) Logger.error(L"AlphaBlend failed");
+			if (!AlphaBlend(canvasDC, x, y, rect.right, rect.bottom, assistDC, 0, 0, rect.right, rect.bottom, blendFunction)) Logger.warn(L"AlphaBlend failed");
 		}
 	}
 

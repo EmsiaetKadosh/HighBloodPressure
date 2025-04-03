@@ -36,35 +36,41 @@ public:
 	 * @brief 调整一个实体与该方块交互时的速度。
 	 * @param entity 目标实体
 	 * @param position 实体当前判定到的位置
-	 * @param velocity 可以直接进行截短调整的速度
+	 * @param velocity 可以直接进行、经过其他方块截短调整的速度
+	 * @param rest 本次调整的原始速度
+	 * @param currentRest 经过其他方块调整后的剩余速度
 	 * @param side 碰撞方向
 	 * @returns (bool) true - 进行了修改; false - 没有进行修改
 	 * @attention 函数内方块状态不要发生变化。该函数只是试探性调整速度，且只进行速度的截短，并不是真正的碰撞交互。
 	 */
-	virtual bool adaptEntityVelocity(Entity& entity, const Vector2D& position, Vector2D& velocity, const CollidingSide side) const {
+	virtual bool adaptEntityVelocity(Entity& entity, const Vector2D& position, Vector2D& velocity, const Vector2D& rest, Vector2D& currentRest, const CollidingSide side) const {
 		Vector2D adapted = velocity;
 		switch (side) {
 			case CollidingSide::LEFT_TOP:
 			case CollidingSide::LEFT_BOTTOM:
 			case CollidingSide::LEFT: {
-				adapted.extendValueX(location.getX() - entity.getBoundingBox().getRight() - position.getX() - 1e-9);
+				adapted.extendValueX(location.getX() - entity.getBoundingBox().getRight() - position.getX() - EpsilonValue);
+				currentRest.strictSelect((rest - adapted).setX(0));
 				if (adapted.lengthManhattan() >= velocity.lengthManhattan()) return false;
 				return velocity = adapted, true;
 			}
 			case CollidingSide::TOP: {
-				adapted.extendValueY(location.getY() - entity.getBoundingBox().getBottom() - position.getY() - 1e-9);
+				adapted.extendValueY(location.getY() - entity.getBoundingBox().getBottom() - position.getY() - EpsilonValue);
+				currentRest.strictSelect((rest - adapted).setY(0));
 				if (adapted.lengthManhattan() >= velocity.lengthManhattan()) return false;
 				return velocity = adapted, true;
 			}
 			case CollidingSide::RIGHT_TOP:
 			case CollidingSide::RIGHT_BOTTOM:
 			case CollidingSide::RIGHT: {
-				adapted.extendValueX(location.getX() + 1 + entity.getBoundingBox().getLeft() - position.getX() + 1e-9);
+				adapted.extendValueX(location.getX() + 1 + entity.getBoundingBox().getLeft() - position.getX() + EpsilonValue);
+				currentRest.strictSelect((rest - adapted).setX(0));
 				if (adapted.lengthManhattan() >= velocity.lengthManhattan()) return false;
 				return velocity = adapted, true;
 			}
 			case CollidingSide::BOTTOM: {
-				adapted.extendValueY(location.getY() + 1 + entity.getBoundingBox().getTop() - position.getY() + 1e-9);
+				adapted.extendValueY(location.getY() + 1 + entity.getBoundingBox().getTop() - position.getY() + EpsilonValue);
+				currentRest.strictSelect((rest - adapted).setY(0));
 				if (adapted.lengthManhattan() >= velocity.lengthManhattan()) return false;
 				return velocity = adapted, true;
 			}
@@ -73,6 +79,8 @@ public:
 		}
 		return false;
 	}
+
+	virtual bool checkEntityOnGround(Entity& entity) const { return dEquals(entity.getLocation().getY() + entity.getBoundingBox().getBottom(), static_cast<double>(location.getY())); }
 };
 
 class PureBarrierBlock final : public Block {
@@ -82,7 +90,23 @@ class PureBarrierBlock final : public Block {
 
 public:
 	void render(double tickDelta, QWORD tickRendering) const noexcept override { renderer.fillWorldBlock(getLocation(), color); }
-	void tick() noexcept override {}
+	void tick() noexcept(false) override {}
 	void setColor(const unsigned int color) noexcept { this->color = color; }
 	static PureBarrierBlock* create(const BlockLocation& location) { return allocatedFor(new PureBarrierBlock(location)); }
+};
+
+class TestBarrierBlock final : public Block {
+	TestBarrierBlock(const BlockLocation& location) : Block(location) {}
+	~TestBarrierBlock() override = default;
+
+public:
+	void render(double tickDelta, QWORD tickRendering) const noexcept override { renderer.fillWorldBlock(getLocation(), 0xffee0000); }
+	void tick() noexcept(false) override {}
+
+	bool adaptEntityVelocity(Entity& entity, const Vector2D& position, Vector2D& velocity, const Vector2D& rest, Vector2D& currentRest, const CollidingSide side) const override {
+		Logger.trace(getLocation().toString() + L" adapting velocity");
+		return Block::adaptEntityVelocity(entity, position, velocity, rest, currentRest, side);
+	}
+
+	static TestBarrierBlock* create(const BlockLocation& location) { return allocatedFor(new TestBarrierBlock(location)); }
 };

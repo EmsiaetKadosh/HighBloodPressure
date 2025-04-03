@@ -79,9 +79,7 @@ public:
 
 	WorldTransportReason() = delete;
 	WorldTransportReason(const WorldTransportReason&) = default;
-	WorldTransportReason(WorldTransportReason&&) = default;
 	WorldTransportReason& operator=(const WorldTransportReason&) = default;
-	WorldTransportReason& operator=(WorldTransportReason&&) = default;
 	~WorldTransportReason() = default;
 	[[nodiscard]] bool operator==(const WorldTransportReason& other) const noexcept { return reason == other.reason; }
 	[[nodiscard]] bool operator!=(const WorldTransportReason& other) const noexcept { return reason != other.reason; }
@@ -100,7 +98,7 @@ public:
 	Location(const Vector2D& position) noexcept : position(position), idWorld(0) {}
 	Location(const Vector2D& position, const WorldID idWorld) noexcept : position(position), idWorld(idWorld) {}
 	Location(const Location& other) noexcept = default;
-	Location(Location&& other) noexcept = default;
+	Location& operator=(const Location& other) noexcept = default;
 	[[nodiscard]] Vector2D getPosition() const noexcept { return position; }
 	[[nodiscard]] WorldID getWorld() const noexcept { return idWorld; }
 	[[nodiscard]] double getX() const noexcept { return position.getX(); }
@@ -120,7 +118,7 @@ public:
 	BlockLocation(const long long x, const long long y, const WorldID idWorld) noexcept : x(x), y(y), idWorld(idWorld) {}
 	BlockLocation(const Vector2D& position, const WorldID idWorld) noexcept : x(static_cast<long long>(std::floor(position.getX()))), y(static_cast<long long>(std::floor(position.getY()))), idWorld(idWorld) {}
 	BlockLocation(const BlockLocation& other) noexcept = default;
-	BlockLocation(BlockLocation&& other) noexcept = default;
+	BlockLocation& operator=(const BlockLocation& other) noexcept = default;
 	[[nodiscard]] Vector2D getPosition() const noexcept { return Vector2D(static_cast<double>(x), static_cast<double>(y)); }
 	[[nodiscard]] WorldID getWorld() const noexcept { return idWorld; }
 	[[nodiscard]] long long getX() const noexcept { return x; }

@@ -386,7 +386,7 @@ public:
 	Font(Font&&) = default;
 	~Font() {
 		// 此处Font的回收已经到结束阶段，GDI应该已经收回了资源，不能在手动释放了
-		if (fonts.size()) Logger.warn(L"Font is not successfully cleared when ~Font() called: " + name);
+		if (!fonts.empty()) Logger.warn(L"Font is not successfully cleared when ~Font() called: " + name);
 	}
 
 private:

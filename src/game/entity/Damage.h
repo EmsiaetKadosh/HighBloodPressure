@@ -60,4 +60,16 @@ struct Damage {
 	[[nodiscard]] double getLowBloodPressure() const noexcept { return damages[DamageTypeEnum::LOW_BLOOD_PRESSURE_DAMAGE]; }
 	[[nodiscard]] double getHighBloodPressure() const noexcept { return damages[DamageTypeEnum::HIGH_BLOOD_PRESSURE_DAMAGE]; }
 	[[nodiscard]] double getSystematicDamage() const noexcept { return damages[DamageTypeEnum::SYSTEMATIC_DAMAGE]; }
+
+	[[nodiscard]] double getTotalDamage() const noexcept {
+		return
+			getPhysicalDamage() +
+			getMagicalDamage() +
+			getTrueDamage() +
+			getDenyDamage() +
+			getReturnDamage() +
+			getLowBloodPressure() +
+			getHighBloodPressure() +
+			getSystematicDamage();
+	}
 };

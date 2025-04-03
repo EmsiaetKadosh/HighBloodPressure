@@ -1,5 +1,0 @@
-Module:
-    File(30%), including Log, Save, Config, Language
-    Translator(30%), with File
-    KeyBinding(20%)
-    World, Entity(10%), including gc problem

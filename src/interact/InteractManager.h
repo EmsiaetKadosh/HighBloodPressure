@@ -204,9 +204,9 @@ class InteractSettings {
 	struct Options {
 		int captionHeight = 120;
 		int marginWidth = 40;
-		int fontHeight = 96;
+		int fontHeight = 64;
 		int floatWindowMargin = 16;
-		double mapScale = 96.0; // 1格表现为mapScale像素
+		double mapScale = 128.0; // 1格表现为mapScale像素
 	};
 
 	struct Constants {
@@ -216,8 +216,8 @@ class InteractSettings {
 		 */
 		double uiScale = 1;
 		double screenScale = 1;
-		double smoothCamera = 0.5; // 相机平滑度。为0，始终瞬时设置相机的位置；为1，相机不动。
-		long long msPerTick = 40;
+		double smoothCamera = 0.95; // 相机平滑度。为0，始终瞬时设置相机的位置；为1，相机不动。
+		long long msPerTick = 10;
 		long long msPerRender = 1;
 		unsigned int floatWindowBackground = 0xdd000000;
 	};

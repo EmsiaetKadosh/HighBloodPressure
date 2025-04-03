@@ -242,6 +242,8 @@ inline void printStackTrace(const std::stacktrace& stacktrace, int maxCount = 5,
 	if (!maxCount) return;
 	std::wstringstream ss;
 	ss << L"Stacktrace:";
+	const bool flag = maxCount < 0;
+	if (flag) maxCount = -maxCount;
 	if (type)
 		for (const auto& entry : stacktrace) {
 			ss << L"\n        Calling " << atow(entry.description().c_str()) << L" #" << entry.native_handle();
@@ -254,7 +256,8 @@ inline void printStackTrace(const std::stacktrace& stacktrace, int maxCount = 5,
 			if (const std::string str = entry.source_file(); !str.empty()) ss << L" @ " << atow(entry.source_file().c_str()) << L":" << entry.source_line();
 			if (!--maxCount) break;
 		}
-	Logger.trace(ss.str());
+	if (flag) Logger.error(ss.str());
+	else Logger.trace(ss.str());
 }
 
 inline void printStackTrace(const unsigned int skip = 0, const int maxCount = 5, const int type = 0) {
@@ -273,9 +276,9 @@ namespace $LimitedAccess {
 class AtomicGuard {
 	friend class $LimitedAccess::AtomicStorageBase;
 	const $LimitedAccess::AtomicStorageBase* storage;
-	AtomicGuard(const $LimitedAccess::AtomicStorageBase* storage);
 
 public:
+	AtomicGuard(const $LimitedAccess::AtomicStorageBase* storage);
 	AtomicGuard(const AtomicGuard&) = delete;
 	AtomicGuard(AtomicGuard&& other) noexcept : storage(other.storage) { other.storage = nullptr; }
 	~AtomicGuard() noexcept;
@@ -312,17 +315,13 @@ public:
 	AtomicGuard atomicGuard() const noexcept { return AtomicGuard(this); }
 };
 
-template <typename T>
-// ReSharper disable once CppClassCanBeFinal
-struct AtomicStorage : T, $LimitedAccess::AtomicStorageBase {
-	template <typename... Args>
-	AtomicStorage(Args&&... args) : T(std::forward<Args>(args)...) {}
-
-	~AtomicStorage() noexcept override {}
+/**
+ * @brief 给一个类的对象提供多线程原子保护。可以继承。
+ */
+struct AtomicStorage : $LimitedAccess::AtomicStorageBase {
+	AtomicStorage() = default;
+	~AtomicStorage() noexcept override = default;
 };
-
-template <>
-struct AtomicStorage<void> final : $LimitedAccess::AtomicStorageBase {};
 
 inline AtomicGuard::AtomicGuard(const $LimitedAccess::AtomicStorageBase* storage): storage(storage) {
 	requireNonnull(storage);

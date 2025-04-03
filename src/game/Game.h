@@ -31,7 +31,7 @@ private:
 	/**
 	 * 此变量只用于在renderThread和gameThread中同步renderThread启动渲染瞬时获取的currentTick
 	 */
-	AtomicStorage<void> currentTickFlag;
+	AtomicStorage currentTickFlag;
 
 public:
 	void initialize();
@@ -41,7 +41,7 @@ public:
 	int closeWindow(Window* const window) noexcept { return windows.pop(window); }
 	[[nodiscard]] FloatWindow& getFloatWindow() const noexcept { return *floatWindow; }
 	[[nodiscard]] QWORD getTick() const noexcept { return currentTick; }
-	void tick() noexcept;
+	void tick() noexcept(false);
 	void render(double tickDelta, QWORD tickRendering) const noexcept;
 
 	/**

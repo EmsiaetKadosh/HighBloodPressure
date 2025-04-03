@@ -29,31 +29,27 @@
  * 【被】猪突猛进：血压50%以上时，若处于奔跑状态不少于0.5s，下一次闪避附带冲撞、眩晕，按命中和伤害升高血压。
  * 【主】猪突猛进：血压50%以上时，主动启动猪突猛进，在下一次闪避之前，取消【被】静如止水，改为按血压值额外增加奔跑速度，奔跑时少量消耗血压，不奔跑时快速增加血压
 */
-class Player final : public Entity, public IDamageable {
+class Player final : public Entity {
 	Player(const Vector2D& location) : Entity(location) {
-		boundingBox.setLeft(0.3);
-		boundingBox.setRight(0.3);
-		boundingBox.setTop(1.2);
+		boundingBox.setLeft(0.6);
+		boundingBox.setRight(0.6);
+		boundingBox.setTop(2.5);
 	}
 
 public:
-	void render(const double tickDelta, const QWORD tickRendering) const noexcept override {
-		momentum.atomicAcquire();
-		const Vector2D& vec = getLocation(tickDelta, tickRendering).getPosition().add(boundingBox.getLeftTopOffset());
-		renderer.fillWorld(vec, boundingBox.getWidth(), boundingBox.getHeight(), 0xff44ee66);
-		// Logger.log(vec.toString() + L" " + dtoString(tickDelta) + L" " + std::to_wstring(tickRendering) + L" " + std::to_wstring(momentum.getLocationTick()) + L" " + std::to_wstring(momentum.getVelocityTick()));
-		momentum.atomicRelease();
-	}
-	void tick() noexcept override {
+	void tick() noexcept(false) override {
 		updatePosition();
-		Vector2D vel;
-		if (interactManager.getKey(VK_UP).isPressed()) vel.add(0, -0.36);
-		if (interactManager.getKey(VK_DOWN).isPressed()) vel.add(0, 0.36);
-		if (interactManager.getKey(VK_LEFT).isPressed()) vel.add(-0.36, 0);
-		if (interactManager.getKey(VK_RIGHT).isPressed()) vel.add(0.36, 0);
-		setVelocity(vel);
+		accelerate = Vector2D();
+		if (interactManager.getKey(VK_UP).isPressed() && isOnGround()) accelerate.setY(-0.4);
+		if (interactManager.getKey(VK_LEFT).isPressed()) accelerate.add(-0.3, 0);
+		if (interactManager.getKey(VK_RIGHT).isPressed()) accelerate.add(0.3, 0);
+		if (accelerate.getX() != 0) {
+			if (accelerate.getX() < 0) accelerate.setX(isOnGround() ? -0.3 - velocity.getX() * 0.8 : -0.04 - velocity.getX() * 0.08);
+			else accelerate.setX(isOnGround() ? 0.3 - velocity.getX() * 0.8 : 0.04 - velocity.getX() * 0.08);
+		}
 		Entity::tick();
 	}
+
 	void onDamage(Damage&) override {}
 	void onDeath() override {}
 

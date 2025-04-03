@@ -38,8 +38,12 @@ Game::~Game() {
 
 void Game::render(const double tickDelta, const QWORD tickRendering) const noexcept {
 	if (renderer.checkResizing()) return;
+	renderer.getCamera().render(tickDelta, tickRendering);
 	renderer.gameStartRender();
-	if (worldManager->current) worldManager->current->render(tickDelta, tickRendering);
+	if (worldManager->current) {
+		worldManager->current->render(tickDelta, tickRendering);
+		renderer.renderMouseWorld();
+	}
 	caption->render(tickDelta, tickRendering);
 	hud.render(tickDelta, tickRendering);
 	windows.render(tickDelta, tickRendering);
@@ -48,11 +52,12 @@ void Game::render(const double tickDelta, const QWORD tickRendering) const noexc
 	gc.pack();
 }
 
-void Game::tick() noexcept {
+void Game::tick() noexcept(false) {
 	// ++currentTick; // 托管到gameThread完成
-	if (worldManager->current) worldManager->current->tick();
 	floatWindow->clear();
 	floatWindow->tick();
+	renderer.tick();
+	worldManager->tick();
 	caption->tick();
 	hud.tick();
 	windows.tick();

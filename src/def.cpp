@@ -60,6 +60,7 @@ namespace $LimitedAccess {
 		delete &gc;
 		Logger.put(L"--------- Last Check ---------");
 		for (const auto& [addr, info] : memoryManager.allocated) Logger.print(L"  using", addr, info.size, L"B", info.msg);
+		std::atomic_thread_fence(std::memory_order_acquire);
 		delete &Logger;
 		delete &memoryManager;
 		std::wcout << L"^^^^^^^^^^^^^^^^^^^^^^^^^^^^^\n";

@@ -11,25 +11,21 @@ void World::adaptEntityVelocity(Entity& entity) const {
 	if (!entity.world) return entity.momentum.velocityTick = game.getTick(), void();
 	if (entity.world != this) return entity.momentum.velocityTick = game.getTick(), void();
 	if (entity.getLocation().getWorld() != idWorld) return entity.momentum.velocityTick = game.getTick(), void();
-	entity.momentum.velocity.periods.clear(); // 此函数在此处不需要atomicAcquire
-	Vector2D storedVelocity = entity.velocity, velocity = entity.velocity;
-	Vector2D position = entity.getLocation().getPosition();
-	CollidingSide side = CollidingSide::COVER;
-	double length = 0.0;
-	double timeLeft = 1.0;
+	entity.momentum.velocity.periods.clear(); // 此函数在此处不需要atomicAcquire；实际上assert entity.momentum.velocity.periods.empty();
+	Vector2D restCurrent = entity.velocity, rest = entity.velocity, velocity = entity.velocity;
+	Vector2D position = entity.momentum.location.getPosition();
+	double length = 0;
+	double timeLeft = 1;
 	while (true) {
-		length = velocity.length();
-		if (length == 0.0) break;
-		const auto& [blocks, _] = boundingBoxCollideBlocks(entity.boundingBox, entity.momentum.location /* 此处在Entity::tick中确保是最新的 */, velocity);
+		length = rest.length();
+		if (dEquals(length, 0) || timeLeft <= 0) break;
+		const auto& [blocks, _] = boundingBoxCollideBlocks(entity.boundingBox, position /* 此处在Entity::tick中确保是最新的 */, rest);
 		unsigned int currentOrder = static_cast<unsigned int>(-1);
 		for (const BoundingBoxCollideBlockResult& result : blocks) {
 			const Block* block = getBlockAt(result.getBlockLocation());
-			if (currentOrder != static_cast<unsigned int>(-1) && result.getOrder() != currentOrder) break; // 进行过了修改，当前order计算完以后就停止计算
 			if (!block) continue;
-			if (block->adaptEntityVelocity(entity, position, velocity, result.getCollidingSide())) {
-				currentOrder = result.getOrder();
-				side = result.getCollidingSide();
-			}
+			if (currentOrder != static_cast<unsigned int>(-1) && result.getOrder() != currentOrder) break; // 进行过了修改，当前order计算完以后就停止计算
+			if (block->adaptEntityVelocity(entity, position, velocity, rest, restCurrent, result.getCollidingSide())) currentOrder = result.getOrder();
 		}
 		double timeCost = velocity.length() * timeLeft / length;
 		if (timeCost > timeLeft) {
@@ -38,35 +34,26 @@ void World::adaptEntityVelocity(Entity& entity) const {
 		}
 		entity.momentum.velocity.periods.emplace_back(velocity, timeCost);
 		timeLeft -= timeCost;
+		// TODO(EmsiaetKadosh): test
+		// Logger.trace(
+		// 	L"\n    position     = " + position.toString() +
+		// 	L"\n    velocity     = " + velocity.toString() +
+		// 	L"\n    rest         = " + rest.toString() +
+		// 	L"\n    restCurrent  = " + restCurrent.toString() +
+		// 	L"\n    boundingBox  = " + entity.getBoundingBox().toString(position)
+		// );
+		// test ^^^
+		if (restCurrent.lengthManhattan() == 0) break;
 		position.add(velocity);
-		storedVelocity.subtract(velocity);
-		switch (side) {
-			case CollidingSide::LEFT:
-			case CollidingSide::RIGHT:
-				storedVelocity.setX(0);
-				break;
-			case CollidingSide::TOP:
-			case CollidingSide::BOTTOM:
-				storedVelocity.setY(0);
-				break;
-			case CollidingSide::LEFT_TOP:
-			case CollidingSide::RIGHT_TOP:
-			case CollidingSide::RIGHT_BOTTOM:
-			case CollidingSide::LEFT_BOTTOM:
-				if (std::abs(storedVelocity.getX()) > std::abs(storedVelocity.getY())) storedVelocity.setY(0);
-				else if (std::abs(storedVelocity.getX()) < std::abs(storedVelocity.getY())) storedVelocity.setX(0);
-				else if (game.random() % 2) storedVelocity.setY(0);
-				else storedVelocity.setX(0);
-				break;
-			case CollidingSide::COVER:
-				break;
-			default:
-				unreachable();
-		}
-		if (storedVelocity.lengthManhattan() == 0) break;
-		velocity = storedVelocity;
+		// TODO(EmsiaetKadosh): test
+		// if (position.getY() > 1) throw RuntimeException(L"Wrong position");
+		// test ^^^
+		restCurrent.strictSelect(rest - velocity);
+		rest = restCurrent;
+		velocity = restCurrent;
 	}
-	return entity.momentum.velocityTick = game.getTick(), void();
+	if (!dEquals(timeLeft, 0)) entity.momentum.velocity.periods.emplace_back(Vector2D(), 0);
+	entity.momentum.velocityTick = game.getTick();
 }
 
 RayTraceResults World::rayTraceBlocks(const Vector2D& startAt, const Vector2D& direction) const {
@@ -182,6 +169,14 @@ BoundingBoxCollideResults World::boundingBoxCollideBlocks(const BoundingBox& bou
 		.right = nMax(coverRight, reflectRight),
 		.bottom = nMax(coverBottom, reflectBottom)
 	};
+	// Logger.trace(
+	// 	L"\n    position:  " + position.toString() +
+	// 	L"\n    direction: " + direction.toString() +
+	// 	L"\n    pos + dir: " + (position + direction).toString() +
+	// 	L"\n    cover:     left = " + dtoString(coverLeft) + L", right = " + dtoString(coverRight) + L", top = " + dtoString(coverTop) + L", bottom = " + dtoString(coverBottom) +
+	// 	L"\n    reflect:   left = " + dtoString(reflectLeft) + L", right = " + dtoString(reflectRight) + L", top = " + dtoString(reflectTop) + L", bottom = " + dtoString(reflectBottom) +
+	// 	L"\n    range:     left = " + dtoString(range.left) + L", right = " + dtoString(range.right) + L", top = " + dtoString(range.top) + L", bottom = " + dtoString(range.bottom)
+	// 	);
 	if (direction.getX() == 0) { // 纵向运动
 		if (direction.getY() == 0) for (long x = range.left; x < range.right; ++x) for (long y = range.top; y < range.bottom; ++y) results.blocks.emplace(BlockLocation(x, y, idWorld), 0, CollidingSide::COVER);
 		else if (direction.getY() < 0) // 向上
@@ -228,7 +223,7 @@ BoundingBoxCollideResults World::boundingBoxCollideBlocks(const BoundingBox& bou
 	reflectForward.add(position);
 	Set<$LimitedAccess::BoundingBoxTraceOrder, $LimitedAccess::BoundingBoxTraceLessX> xOrder;
 	Set<$LimitedAccess::BoundingBoxTraceOrder, $LimitedAccess::BoundingBoxTraceLessY> yOrder;
-	const auto& [locations, _] = rayTraceBlocks(coverForward, direction.clone().multiply(1.08)); // 此处需要获得定序方式
+	const auto& [locations, _] = rayTraceBlocks(coverForward, direction.clone().multiply(1.125)); // 此处需要获得定序方式
 	unsigned int od = 0;
 	for (const auto& block : locations)
 		switch (block.getHitSide()) {
@@ -254,6 +249,7 @@ BoundingBoxCollideResults World::boundingBoxCollideBlocks(const BoundingBox& bou
 		} // 完成定序
 	const double amMax = 0.5 * direction.lengthManhattan();
 	const double amH = std::abs(direction.getX() * (coverFarthestPositive.getY() - coverFarthestNegative.getY()) - direction.getY() * (coverFarthestPositive.getX() - coverFarthestNegative.getX()));
+	// const double crossResult = direction.cross(coverFarthestPositive - coverFarthestNegative).getZ();
 	for (long x = range.left; x < range.right; ++x)
 		for (long y = range.top; y < range.bottom; ++y) {
 			if (nSideBetween(x, coverLeft, coverRight) && nSideBetween(y, coverTop, coverBottom)) continue; // Cover的直接扔了得了
@@ -264,7 +260,10 @@ BoundingBoxCollideResults World::boundingBoxCollideBlocks(const BoundingBox& bou
 			const double amP2 = std::abs(direction.getX() * amRelativeP2.getY() - direction.getY() * amRelativeP2.getX());
 			if (amP1 < amMax || amP2 < amMax) goto append; // 相交
 			if (dEquals(amP1 + amP2, amH)) goto append; // 在内
-			if (Vector2D&& farthestRelative = blockCenter - reflectForward; !nSamePositivity(farthestRelative.getX(), direction.getX()) && !nSamePositivity(farthestRelative.getY(), direction.getY())) goto append;
+			// if (nBetween(direction.cross(blockCenter - coverFarthestNegative).getZ(), 0.0, crossResult)) goto append;
+			// if (BlockLocation::blockCenterContains(blockCenter, blockCenter.nearestPointFrom(coverFarthestNegative, direction))) goto append;
+			// if (BlockLocation::blockCenterContains(blockCenter, blockCenter.nearestPointFrom(coverFarthestPositive, direction))) goto append;
+			// if (Vector2D&& farthestRelative = blockCenter - reflectForward; !nSamePositivity(farthestRelative.getX(), direction.getX()) && !nSamePositivity(farthestRelative.getY(), direction.getY())) goto append;
 			continue;
 		append:
 			CollidingSide side; // assert !CollidingSide::COVER;
@@ -277,4 +276,19 @@ BoundingBoxCollideResults World::boundingBoxCollideBlocks(const BoundingBox& bou
 			results.blocks.emplace(result);
 		}
 	return results;
+}
+
+void WorldManager::tick() const {
+	if (current) {
+		current->tick();
+		if (interactManager.isInWindow()) {
+			game.getFloatWindow().push(RenderableString(L"\\f\3\\#ffee66dd" + renderer.mousePointingAtBlock.toString()));
+			game.getFloatWindow().push(RenderableString(L"\\f\3\\#ffee0000" + renderer.mousePointingAtWorld.toString()));
+		}
+	}
+	if (!game.getWindow()) {
+		int c = interactManager.dealMouseWheel();
+		if (c < 0) while (c++) interactSettings.actual.mapScale *= 0.96;
+		else if (c > 0) while (c--) interactSettings.actual.mapScale *= 1.05;
+	}
 }

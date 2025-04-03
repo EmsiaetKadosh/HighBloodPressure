@@ -6,7 +6,25 @@
 
 #include "..\game\Game.h"
 #include "..\hbp.h"
+#include "..\game\entity\Entity.h"
 #include "..\interact\InteractManager.h"
+
+void Camera::render(const double tickDelta, const QWORD tickRendering) noexcept {
+	renderingTarget = targeting;
+	if (renderingTarget) {
+		renderingTarget->getMomentum().atomicAcquire();
+		targetPosition = renderingTarget->getLocation(tickDelta, tickRendering).getPosition();
+		renderingTarget->getMomentum().atomicRelease();
+		Vector2D&& rel = targetPosition - position;
+		if (dEquals(rel.lengthManhattan(), 0)) position = targetPosition;
+		else position.add(rel.multiply(1 - interactSettings.constants.smoothCamera));
+	}
+}
+
+void Camera::setTargetEntity(Entity* target) noexcept {
+	updateTick = game.getTick();
+	targeting = target;
+}
 
 void Renderer::gameStartRender() noexcept {
 	isRendering = true;
@@ -68,8 +86,7 @@ void Renderer::resize(const int width, const int height) noexcept(false) {
 			if (!PostMessageW(MainWindowHandle, WM_APP_REQUESTHDC, 0, 0)) {
 				isRunning = false;
 				Logger.error(L"PostMessage WM_APP_REQUESTHDC failed. LastError: " + std::to_wstring(GetLastError()));
-			}
-			else lastPostRefreshTime = getCurrentTime();
+			} else lastPostRefreshTime = getCurrentTime();
 		}
 		return; // 已经Post，但是尚未获取到新的
 	}
@@ -110,6 +127,11 @@ void Renderer::syncSize(const int width, const int height) noexcept(false) {
 	syncHeight = height;
 }
 
+void Renderer::tick() noexcept(false) {
+	mousePointingAtWorld = Vector2D(interactManager.getMouseX() - (windowWidth >> 1), interactManager.getMouseY() - (windowHeight >> 1)).divide(interactSettings.actual.mapScale).add(camera.getCurrentPosition());
+	mousePointingAtBlock = mousePointingAtWorld;
+}
+
 void Renderer::resizeEnd() noexcept {
 	isResizing = false;
 	if (resizeCopyBitmap) deleteObject(resizeCopyBitmap);
@@ -117,6 +139,13 @@ void Renderer::resizeEnd() noexcept {
 	resizeCopyWidth = 0;
 	resizeCopyHeight = 0;
 	requireResize();
+}
+
+void Renderer::renderMouseWorld() noexcept {
+	if (!interactManager.isInWindow()) return;
+	fillWorldBlock(mousePointingAtBlock, mousePointingAtFlash.adaptsColor(0x88ffffff, 0x88ff0000));
+	fillWorld(mousePointingAtWorld - Vector2D(10, 0.02), 20, 0.04, 0xffee0000);
+	fillWorld(mousePointingAtWorld - Vector2D(0.02, 10), 0.04, 20, 0xffee0000);
 }
 
 inline Renderer renderer = Renderer();

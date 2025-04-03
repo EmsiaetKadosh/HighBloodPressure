@@ -16,7 +16,7 @@ int Window::pop() noexcept {
 
 void Window::render(const double tickDelta, QWORD tickRendering) const noexcept { for (const Widget* widget : widgets) widget->render(tickDelta, tickRendering); }
 
-void Window::tick() noexcept {
+void Window::tick() noexcept(false) {
 	for (Widget* widget : widgets) widget->tick();
 	if (reserved[0]) game.closeWindow(this);
 }
@@ -99,7 +99,7 @@ CaptionWindow::CaptionWindow() {
 	options->onTick = [](const Widget& self, MouseButtonCode) {
 		if (self.containsMouse()) {
 			game.getFloatWindow().push(TranslatableText(L"hbp.float.settings").getRenderableString());
-			game.getFloatWindow().push(LiteralText(L"\\.ffee0000\\#ff000000中键获取位置信息").getRenderableString());
+			game.getFloatWindow().push(LiteralText(L"\\.ffee0000\\#ff000000中键获取位置信息、调整tickRate").getRenderableString());
 			game.getFloatWindow().push(TranslatableText(L"hbp.float.freshCanvas").getRenderableString());
 		}
 	};
@@ -110,6 +110,8 @@ CaptionWindow::CaptionWindow() {
 		} else if (static_cast<int>(MouseButtonCodeEnum::MBC_M_CHANGE) & code) {
 			Logger.info(L"LastError: " + std::to_wstring(GetLastError()));
 			Logger.info(game.entityManager->getEntity(1)->getLocation().getPosition().toString());
+			if (interactSettings.constants.msPerTick < 100) interactSettings.constants.msPerTick = 600;
+			else interactSettings.constants.msPerTick = 10;
 		}
 	};
 	options->absolute();

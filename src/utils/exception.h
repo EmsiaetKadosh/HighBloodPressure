@@ -15,8 +15,8 @@ class Exception : public std::exception {
 protected:
 	String msg;
 
-	Exception(String&& msg, const String* type) : type(type), stacktrace(std::stacktrace::current(3)), msg(std::move(msg)) {}
-	Exception(const String& msg, const String* type) : type(type), stacktrace(std::stacktrace::current(3)), msg(msg) {}
+	Exception(String&& msg, const String* type) : type(type), stacktrace(std::stacktrace::current(2)), msg(std::move(msg)) {}
+	Exception(const String& msg, const String* type) : type(type), stacktrace(std::stacktrace::current(2)), msg(msg) {}
 
 public:
 	[[nodiscard]] String getMessage() const noexcept { return msg; }
@@ -101,6 +101,9 @@ class PublicLogger final {
 	template <typename T> requires requires(std::wstringstream stream, T&& t) { stream << std::forward<T>(t); }
 	static void ofs(std::wstringstream& stream, T&& t) { stream << L" " << std::forward<T>(t); }
 
+	static void atomicAcquire() noexcept;
+	static void atomicRelease() noexcept;
+
 public:
 	const String name;
 
@@ -108,49 +111,70 @@ public:
 
 	PublicLogger& put(const String& msg) noexcept {
 		const String& str = L"          " + name + L"        " + msg + L"\n";
+		atomicAcquire();
+		SetConsoleTextAttribute(GetStdHandle(STD_OUTPUT_HANDLE), FOREGROUND_RED | FOREGROUND_BLUE);
 		std::wcout << str;
+		atomicRelease();
 		mainLogger << str;
 		return *this;
 	}
 
 	PublicLogger& trace(const String& msg) noexcept {
 		const String& str = build(msg, L"[Trace] ");
+		atomicAcquire();
+		SetConsoleTextAttribute(GetStdHandle(STD_OUTPUT_HANDLE), FOREGROUND_GREEN | FOREGROUND_BLUE);
 		std::wcout << str;
+		atomicRelease();
 		mainLogger << str;
 		return *this;
 	}
 
 	PublicLogger& debug(const String& msg) noexcept {
 		const String& str = build(msg, L"[Debug] ");
+		atomicAcquire();
+		SetConsoleTextAttribute(GetStdHandle(STD_OUTPUT_HANDLE), FOREGROUND_BLUE);
 		std::wcout << str;
+		atomicRelease();
 		mainLogger << str;
 		return *this;
 	}
 
 	PublicLogger& log(const String& msg) noexcept {
 		const String& str = build(msg, L"[Log]   ");
+		atomicAcquire();
+		SetConsoleTextAttribute(GetStdHandle(STD_OUTPUT_HANDLE), FOREGROUND_RED | FOREGROUND_GREEN | FOREGROUND_BLUE);
 		std::wcout << str;
+		atomicRelease();
 		mainLogger << str;
 		return *this;
 	}
 
 	PublicLogger& info(const String& msg) noexcept {
 		const String& str = build(msg, L"[Info]  ");
+		atomicAcquire();
+		SetConsoleTextAttribute(GetStdHandle(STD_OUTPUT_HANDLE), FOREGROUND_RED | FOREGROUND_GREEN | FOREGROUND_BLUE);
 		std::wcout << str;
+		atomicRelease();
 		mainLogger << str;
 		return *this;
 	}
 
 	PublicLogger& warn(const String& msg) noexcept {
 		const String& str = build(msg, L"[Warn]  ");
+		atomicAcquire();
+		SetConsoleTextAttribute(GetStdHandle(STD_OUTPUT_HANDLE), FOREGROUND_RED | FOREGROUND_GREEN);
 		std::wcout << str;
+		atomicRelease();
 		mainLogger << str;
 		return *this;
 	}
 
 	PublicLogger& error(const String& msg) noexcept {
 		const String& str = build(msg, L"[Error] ");
+		atomicAcquire();
+		SetConsoleTextAttribute(GetStdHandle(STD_OUTPUT_HANDLE), FOREGROUND_RED);
 		std::wcout << str;
+		atomicRelease();
 		mainLogger << str;
 		return *this;
 	}
@@ -161,7 +185,10 @@ public:
 		stream << L"          " << name << L"        " << msg << std::endl;
 		String str = stream.str();
 		mainLogger << str;
+		atomicAcquire();
+		SetConsoleTextAttribute(GetStdHandle(STD_OUTPUT_HANDLE), FOREGROUND_RED | FOREGROUND_BLUE);
 		std::wcout << str;
+		atomicRelease();
 		return *this;
 	}
 
@@ -176,7 +203,10 @@ public:
 		stream << std::endl;
 		const String& str = stream.str();
 		mainLogger << str;
+		atomicAcquire();
+		SetConsoleTextAttribute(GetStdHandle(STD_OUTPUT_HANDLE), FOREGROUND_RED | FOREGROUND_BLUE);
 		std::wcout << str;
+		atomicRelease();
 		return *this;
 	}
 

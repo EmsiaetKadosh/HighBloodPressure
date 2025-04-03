@@ -6,8 +6,8 @@
 
 #include "..\def.h"
 #include "..\utils\gc.h"
-#include "..\render\Renderer.h"
 #include "..\game\Animation.h"
+#include "..\render\Renderer.h"
 #include "..\utils\IText.h"
 
 class WindowManager;
@@ -112,7 +112,7 @@ public:
 	}
 
 	virtual void onMouseClick(const MouseButtonCode value) noexcept { if (mouseClick) mouseClick(*this, value); }
-	void tick() noexcept override { if (onTick) onTick(*this, 0); }
+	void tick() noexcept(false) override { if (onTick) onTick(*this, 0); }
 
 	virtual int passEvent(const MouseActionCode action, const MouseButtonCode value, const int x, const int y) noexcept {
 		if (action == MouseActionCode::MAC_LEAVE || !isMouseIn(x, y)) {
@@ -157,7 +157,7 @@ protected:
 public:
 	int pop() noexcept override;
 	void render(double tickDelta, QWORD tickRendering) const noexcept override;
-	void tick() noexcept override;
+	void tick() noexcept(false) override;
 	/**
 	 * 在Game.setWindow()时，本窗口开启时调用。
 	 * 不应当外部调用。
@@ -181,8 +181,8 @@ public:
 
 class WindowManager final : public AnywhereEditableList<Window, WindowManager>, public IRenderable, public ITickable {
 public:
-	void render(const double tickDelta, QWORD tickRendering) const noexcept override { for (const Window& i : *this) i.render(tickDelta, tickRendering); }
-	void tick() noexcept override { for (Window& i : *this) i.tick(); }
+	void render(const double tickDelta, const QWORD tickRendering) const noexcept override { for (const Window& i : *this) i.render(tickDelta, tickRendering); }
+	void tick() noexcept(false) override { for (Window& i : *this) i.tick(); }
 	int pop(Window* value) noexcept override;
 	void clear() noexcept;
 	void onResize() noexcept { for (Window& i : *this) i.onResize(); }
@@ -215,7 +215,7 @@ public:
 	void push(const ObjectHolder<RenderableString>& string) const { if (strings.ptrNew()) strings.getNew().push_back(string); }
 	void push(ObjectHolder<RenderableString>&& string) const { if (strings.ptrNew()) strings.getNew().push_back(std::move(string)); }
 	void render(double tickDelta, QWORD tickRendering) const noexcept override;
-	void tick() noexcept override {}
+	void tick() noexcept(false) override {}
 	bool onOpen() override { return true; }
 	void onClose() override {}
 	void update() const noexcept { strings.ok(); }
