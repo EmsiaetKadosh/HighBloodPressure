@@ -15,6 +15,13 @@ struct KeyStatus {
 
 	[[nodiscard]] bool isPressed() const noexcept { return pressed; }
 	[[nodiscard]] unsigned int wasPressed() const noexcept { return pressTimes; }
+	[[nodiscard]] bool isPressedAndDeal() noexcept { return notDealt = false, pressed; }
+	[[nodiscard]] bool wasPressedAndDeal() noexcept {
+		const unsigned int ret = pressTimes;
+		notDealt = false;
+		pressTimes = 0;
+		return ret;
+	}
 
 	void deals() noexcept {
 		notDealt = false;
@@ -51,7 +58,7 @@ class InteractManager {
 		.hwndTrack = nullptr,
 		.dwHoverTime = HOVER_DEFAULT
 	};
-	KeyStatus keyStatus[256] {};
+	KeyStatus keyStatus[256]{};
 	int mouseX = 0, mouseY = 0;
 	int mouseWheel = 0;
 	int rebindResult = 0;

@@ -39,15 +39,14 @@ void Entity::onDamage(Damage& damage) {
 	else health -= damage.getTotalDamage();
 }
 
-void Entity::onDeath() {
-
-}
+void Entity::onDeath() {}
 
 void Entity::tick() noexcept(false) {
 	updatePosition();
 	if (!world) return;
-	if (velocity.getX() == 0) accelerate.add(0, 0.02);
-	else accelerate.add(isOnGround() ? -velocity.getX() * 0.3 : -velocity.getX() * 0.03, 0.03);
+	if (accelerate.getX() == 0) accelerate.add(isOnGround() ? nRange(-velocity.getX(), -0.2, 0.2) : nRange(-velocity.getX(), -0.03, 0.03), cancelGravityOnce ? 0 : 0.02);
+	else if (!cancelGravityOnce) accelerate.add(0, 0.02);
+	cancelGravityOnce = false;
 	velocity.add(accelerate);
 	if (velocity.getY() > 3) velocity.setY(3);
 	else if (velocity.getY() < -3) velocity.setY(-3);

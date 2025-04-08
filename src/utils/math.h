@@ -298,3 +298,26 @@ public:
 
 inline Vector2D operator*(const double scalar, const Vector2D& vector) noexcept { return vector * scalar; }
 inline Vector3D operator*(const double scalar, const Vector3D& vector) noexcept { return vector * scalar; }
+
+class Matrix2D {
+public:
+	double a11 = 0, a12 = 0;
+	double a21 = 0, a22 = 0;
+
+	Matrix2D() = default;
+};
+
+class Matrix3D {
+public:
+	double a11 = 0, a12 = 0, a13 = 0;
+	double a21 = 0, a22 = 0, a23 = 0;
+	double a31 = 0, a32 = 0, a33 = 0;
+};
+
+class Matrix4D {
+public:
+	double a11 = 0, a12 = 0, a13 = 0, a14 = 0;
+	double a21 = 0, a22 = 0, a23 = 0, a24 = 0;
+	double a31 = 0, a32 = 0, a33 = 0, a34 = 0;
+	double a41 = 0, a42 = 0, a43 = 0, a44 = 0;
+};

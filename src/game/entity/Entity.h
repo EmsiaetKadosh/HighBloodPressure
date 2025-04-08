@@ -238,7 +238,7 @@ public:
 	[[nodiscard]] QWORD getVelocityTick() const noexcept { return velocityTick; }
 };
 
-interface IArtificialIntelligent {
+struct IArtificialIntelligent {
 protected:
 	virtual ~IArtificialIntelligent() = default;
 	virtual void aiProcess() {}
@@ -259,7 +259,10 @@ protected:
 	double maxSpeed = 1.0;
 	double maxHealth = 100;
 	double health = 100;
+	double maxBloodPressure = 100;
+	double bloodPressure = 0;
 	bool onGround = true;
+	bool cancelGravityOnce = false;
 
 	Entity(const Vector2D& location) : momentum(location, Velocity()) {}
 	~Entity() override = default;
@@ -287,6 +290,7 @@ public:
 	void teleport(const Vector2D& location) noexcept;
 	void changeWorld(WorldID id, bool discardMovements = true) noexcept;
 	void setOnGround(const bool val) noexcept { onGround = val; }
+	void cancelGravityThisTick() noexcept { cancelGravityOnce = true; }
 	[[nodiscard]] const BoundingBox& getBoundingBox() const noexcept { return this->boundingBox; }
 	[[nodiscard]] Location getLocation() const noexcept { return momentum.location; }
 	[[nodiscard]] Vector2D getVelocity() const noexcept { return this->velocity; }
@@ -302,9 +306,8 @@ public:
 	[[nodiscard]] Location getLocation(const double tickDelta, const QWORD tickRendering) const noexcept {
 		// const AtomicGuard guard = momentum.atomicGuard();
 		// assert momentum.locationTick <= tickRendering && momentum.velocityTick <= tickRendering;
-		if (momentum.locationTick == tickRendering && momentum.velocityTick == tickRendering) return momentum.location.getPosition().add(momentum.velocity.getRelativeLocation(tickDelta));
-		if (momentum.locationTick > tickRendering) return momentum.lastLocation.getPosition().add(momentum.lastVelocity.getRelativeLocation(tickDelta));
-		return momentum.location.getPosition().add(momentum.velocity.getRelativeLocation(tickDelta));
+		if (momentum.locationTick > tickRendering) return momentum.lastLocation.getPosition() + momentum.lastVelocity.getRelativeLocation(tickDelta);
+		return momentum.location.getPosition() + momentum.velocity.getRelativeLocation(tickDelta);
 	}
 };
 

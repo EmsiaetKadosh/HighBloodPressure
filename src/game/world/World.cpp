@@ -28,26 +28,27 @@ void World::adaptEntityVelocity(Entity& entity) const {
 			if (block->adaptEntityVelocity(entity, position, velocity, rest, restCurrent, result.getCollidingSide())) currentOrder = result.getOrder();
 		}
 		double timeCost = velocity.length() * timeLeft / length;
-		if (timeCost > timeLeft) {
-			Logger.warn(L"timeCost > timeLeft !!! timeCost = " + dtoString(timeCost) + L", timeLeft = " + dtoString(timeLeft));
-			timeCost = timeLeft;
-		}
+		if (timeCost > timeLeft) timeCost = timeLeft;
 		entity.momentum.velocity.periods.emplace_back(velocity, timeCost);
 		timeLeft -= timeCost;
+		/*
 		// TODO(EmsiaetKadosh): test
-		// Logger.trace(
-		// 	L"\n    position     = " + position.toString() +
-		// 	L"\n    velocity     = " + velocity.toString() +
-		// 	L"\n    rest         = " + rest.toString() +
-		// 	L"\n    restCurrent  = " + restCurrent.toString() +
-		// 	L"\n    boundingBox  = " + entity.getBoundingBox().toString(position)
-		// );
+		Logger.trace(
+			L"\n    position     = " + position.toString() +
+			L"\n    velocity     = " + velocity.toString() +
+			L"\n    rest         = " + rest.toString() +
+			L"\n    restCurrent  = " + restCurrent.toString() +
+			L"\n    boundingBox  = " + entity.getBoundingBox().toString(position)
+		);
 		// test ^^^
+		*/
 		if (restCurrent.lengthManhattan() == 0) break;
 		position.add(velocity);
+		/*
 		// TODO(EmsiaetKadosh): test
-		// if (position.getY() > 1) throw RuntimeException(L"Wrong position");
+		if (position.getY() > 1) throw RuntimeException(L"Wrong position");
 		// test ^^^
+		*/
 		restCurrent.strictSelect(rest - velocity);
 		rest = restCurrent;
 		velocity = restCurrent;
@@ -169,14 +170,16 @@ BoundingBoxCollideResults World::boundingBoxCollideBlocks(const BoundingBox& bou
 		.right = nMax(coverRight, reflectRight),
 		.bottom = nMax(coverBottom, reflectBottom)
 	};
-	// Logger.trace(
-	// 	L"\n    position:  " + position.toString() +
-	// 	L"\n    direction: " + direction.toString() +
-	// 	L"\n    pos + dir: " + (position + direction).toString() +
-	// 	L"\n    cover:     left = " + dtoString(coverLeft) + L", right = " + dtoString(coverRight) + L", top = " + dtoString(coverTop) + L", bottom = " + dtoString(coverBottom) +
-	// 	L"\n    reflect:   left = " + dtoString(reflectLeft) + L", right = " + dtoString(reflectRight) + L", top = " + dtoString(reflectTop) + L", bottom = " + dtoString(reflectBottom) +
-	// 	L"\n    range:     left = " + dtoString(range.left) + L", right = " + dtoString(range.right) + L", top = " + dtoString(range.top) + L", bottom = " + dtoString(range.bottom)
-	// 	);
+	/*
+	Logger.trace(
+		L"\n    position:  " + position.toString() +
+		L"\n    direction: " + direction.toString() +
+		L"\n    pos + dir: " + (position + direction).toString() +
+		L"\n    cover:     left = " + dtoString(coverLeft) + L", right = " + dtoString(coverRight) + L", top = " + dtoString(coverTop) + L", bottom = " + dtoString(coverBottom) +
+		L"\n    reflect:   left = " + dtoString(reflectLeft) + L", right = " + dtoString(reflectRight) + L", top = " + dtoString(reflectTop) + L", bottom = " + dtoString(reflectBottom) +
+		L"\n    range:     left = " + dtoString(range.left) + L", right = " + dtoString(range.right) + L", top = " + dtoString(range.top) + L", bottom = " + dtoString(range.bottom)
+		);
+	*/
 	if (direction.getX() == 0) { // 纵向运动
 		if (direction.getY() == 0) for (long x = range.left; x < range.right; ++x) for (long y = range.top; y < range.bottom; ++y) results.blocks.emplace(BlockLocation(x, y, idWorld), 0, CollidingSide::COVER);
 		else if (direction.getY() < 0) // 向上
@@ -249,7 +252,6 @@ BoundingBoxCollideResults World::boundingBoxCollideBlocks(const BoundingBox& bou
 		} // 完成定序
 	const double amMax = 0.5 * direction.lengthManhattan();
 	const double amH = std::abs(direction.getX() * (coverFarthestPositive.getY() - coverFarthestNegative.getY()) - direction.getY() * (coverFarthestPositive.getX() - coverFarthestNegative.getX()));
-	// const double crossResult = direction.cross(coverFarthestPositive - coverFarthestNegative).getZ();
 	for (long x = range.left; x < range.right; ++x)
 		for (long y = range.top; y < range.bottom; ++y) {
 			if (nSideBetween(x, coverLeft, coverRight) && nSideBetween(y, coverTop, coverBottom)) continue; // Cover的直接扔了得了
@@ -260,10 +262,6 @@ BoundingBoxCollideResults World::boundingBoxCollideBlocks(const BoundingBox& bou
 			const double amP2 = std::abs(direction.getX() * amRelativeP2.getY() - direction.getY() * amRelativeP2.getX());
 			if (amP1 < amMax || amP2 < amMax) goto append; // 相交
 			if (dEquals(amP1 + amP2, amH)) goto append; // 在内
-			// if (nBetween(direction.cross(blockCenter - coverFarthestNegative).getZ(), 0.0, crossResult)) goto append;
-			// if (BlockLocation::blockCenterContains(blockCenter, blockCenter.nearestPointFrom(coverFarthestNegative, direction))) goto append;
-			// if (BlockLocation::blockCenterContains(blockCenter, blockCenter.nearestPointFrom(coverFarthestPositive, direction))) goto append;
-			// if (Vector2D&& farthestRelative = blockCenter - reflectForward; !nSamePositivity(farthestRelative.getX(), direction.getX()) && !nSamePositivity(farthestRelative.getY(), direction.getY())) goto append;
 			continue;
 		append:
 			CollidingSide side; // assert !CollidingSide::COVER;

@@ -30,24 +30,47 @@
  * 【主】猪突猛进：血压50%以上时，主动启动猪突猛进，在下一次闪避之前，取消【被】静如止水，改为按血压值额外增加奔跑速度，奔跑时少量消耗血压，不奔跑时快速增加血压
 */
 class Player final : public Entity {
+	char airJump = 1;
+
 	Player(const Vector2D& location) : Entity(location) {
 		boundingBox.setLeft(0.6);
 		boundingBox.setRight(0.6);
 		boundingBox.setTop(2.5);
+		maxSpeed = 0.3;
 	}
 
 public:
 	void tick() noexcept(false) override {
 		updatePosition();
 		accelerate = Vector2D();
-		if (interactManager.getKey(VK_UP).isPressed() && isOnGround()) accelerate.setY(-0.4);
-		if (interactManager.getKey(VK_LEFT).isPressed()) accelerate.add(-0.3, 0);
-		if (interactManager.getKey(VK_RIGHT).isPressed()) accelerate.add(0.3, 0);
-		if (accelerate.getX() != 0) {
-			if (accelerate.getX() < 0) accelerate.setX(isOnGround() ? -0.3 - velocity.getX() * 0.8 : -0.04 - velocity.getX() * 0.08);
-			else accelerate.setX(isOnGround() ? 0.3 - velocity.getX() * 0.8 : 0.04 - velocity.getX() * 0.08);
+		if (interactManager.getKey(VK_UP).wasPressedAndDeal()) {
+			if (isOnGround()) accelerate.setY(-0.4);
+			else if (airJump == 2) velocity.setY(-0.25), accelerate.setY(0), --airJump;
+			else if (airJump == 1) {
+				--airJump, velocity.setY(-0.4), accelerate.setY(0);
+				if (interactManager.getKey(VK_LEFT).isPressed()) velocity.setX(nMin(-0.35, velocity.getX()));
+				if (interactManager.getKey(VK_RIGHT).isPressed()) velocity.setX(nMax(0.35, velocity.getX()));
+			}
 		}
+		if (interactManager.getKey(VK_LEFT).isPressed()) accelerate.add(-0.02, 0);
+		if (interactManager.getKey(VK_RIGHT).isPressed()) accelerate.add(0.02, 0);
+		if (accelerate.getX() != 0) accelerate.setX(nRange(accelerate.getX(), (-maxSpeed - velocity.getX()) * 0.2, (maxSpeed - velocity.getX()) * 0.2));
 		Entity::tick();
+	}
+
+	void checkOnGround() noexcept override {
+		Entity::checkOnGround();
+		if (onGround) airJump = 2;
+	}
+
+	void render(const double tickDelta, const QWORD tickRendering) const noexcept override {
+		if (renderer.getCamera().getRenderingTargetEntity() == this) {
+			renderer.fillWorld(renderer.getCamera().getTargetPosition().add(boundingBox.getLeftTopOffset()), boundingBox.getWidth(), boundingBox.getHeight(), airJump == 2? 0xff44ee66 : airJump == 1 ? 0xffeeee66 : 0xffdd7755);
+			return;
+		}
+		momentum.atomicAcquire();
+		renderer.fillWorld(getLocation(tickDelta, tickRendering).getPosition().add(boundingBox.getLeftTopOffset()), boundingBox.getWidth(), boundingBox.getHeight(), airJump == 2? 0xff44ee66 : airJump == 1 ? 0xffeeee66 : 0xffdd7755);
+		momentum.atomicRelease();
 	}
 
 	void onDamage(Damage&) override {}

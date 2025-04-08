@@ -18,7 +18,6 @@
 #include <map>
 #include <chrono>
 #include <atomic>
-#include <thread>
 #include <fstream>
 #include <sstream>
 #include <cmath>
@@ -54,13 +53,14 @@ using Atomic = std::atomic<T>;
 #define SameAs(PARAMS) Comment(PARAMS)
 #define pass // ((void) 0)
 
-	//NOLINTNEXTLINE(*-reserved-identifier)
+//NOLINTNEXTLINE(*-reserved-identifier)
 #define _WINSOCKAPI_ /* 防止winsock.h被引入。winsock.h和winsock2.h冲突。 */
 #if false
 #include <WinSock2.h>
 #endif
 
 #define NOMINMAX
+#define WIN32_LEAN_AND_MEAN
 
 #include <Windows.h>
 #include <Windowsx.h>
@@ -70,6 +70,18 @@ using Atomic = std::atomic<T>;
 #include <WinUser.h>
 #include <Uxtheme.h>
 #include <dwmapi.h>
+
+// DirectX
+// #include <d3d12.h> // 估计是版本过于老旧了，用不了一点
+#include "include\include\directx\d3d12.h"
+#include "include\include\directx\d3dx12.h"
+#include <dxgi1_6.h>
+#include <DirectXMath.h>
+#include <DirectXPackedVector.h>
+#ifdef __CARLBEKS_DEBUG__
+#include <dxgidebug.h>
+#endif
+#include <wrl.h>
 
 #define WM_APP_LBUTTONUP (WM_APP + 1)
 #define WM_APP_MBUTTONDOWN (WM_APP + 2)
@@ -82,6 +94,10 @@ using Atomic = std::atomic<T>;
 #pragma comment(lib, "dwmapi.lib")
 #pragma comment(lib, "Uxtheme.lib")
 #pragma comment(lib, "winmm.lib")
+// DirectX
+#pragma comment(lib, "d3d12.lib")
+#pragma comment(lib, "dxgi.lib")
+#pragma comment(lib, "D3DCompiler.lib")
 
 #include "warnings.h"
 

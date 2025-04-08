@@ -17,7 +17,7 @@ void Game::initialize() {
 
 Game::Game() : caption{ allocatedFor(new CaptionWindow()) }, floatWindow{ allocatedFor(new FloatWindow()) } {
 	Logger.put(L"Game created");
-	random.seed(timeGetTime());
+	random.seed(static_cast<unsigned int>(getCurrentTime().time_since_epoch().count()));
 }
 
 Game::~Game() {

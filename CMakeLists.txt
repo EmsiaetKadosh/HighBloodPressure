@@ -3,7 +3,6 @@ project(HighBloodPressure VERSION 0.1.0 LANGUAGES C CXX)
 
 add_definitions(-DUNICODE)
 add_definitions(-D_UNICODE)
-add_definitions(-DCINTERFACE)
 add_definitions(-D__CARLBEKS_CMAKE_VSCODE__)
 set(CMAKE_CXX_STANDARD 26)
 set(CMAKE_WIN32_EXECUTABLE true)
@@ -30,9 +29,10 @@ add_executable(${PROJECT_NAME}
 
         src/interact/InteractManager.cpp
         src/utils/IText.cpp
+        src/render/TextureManager.cpp
+        src/render/dx/direct.cpp
         src/game/world/Location.cpp
         src/render/Renderer.cpp
-        src/render/TextureManager.cpp
         src/ui/Hud.cpp
         src/ui/Window.cpp
 
@@ -41,6 +41,8 @@ add_executable(${PROJECT_NAME}
         src/game/entity/Entity.cpp
         src/game/world/World.cpp
         src/game/entity/Player.cpp
+
+        src/render/dx/direct.cpp
 )
 set(CPACK_PROJECT_NAME ${PROJECT_NAME})
 set(CPACK_PROJECT_VERSION ${PROJECT_VERSION})

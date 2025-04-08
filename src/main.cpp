@@ -635,7 +635,8 @@ int __stdcall wWinMain(const HINSTANCE hInstance, const HINSTANCE, [[maybe_unuse
 	if (GameThread.joinable()) GameThread.join();
 	if (RenderThread.joinable()) RenderThread.join();
 	Logger.info(L"Thread terminated");
-	UnhookWindowsHookEx(hook);
+	if (!UnhookWindowsHookEx(hook)) Logger.error(L"Failed to UnhookWindowsHookEx. LastError:" + std::to_wstring(GetLastError()));
+	if (!UnregisterClassW(wc.lpszClassName, wc.hInstance)) Logger.error(L"Failed to UnregisterClassW. LastError:" + std::to_wstring(GetLastError()));
 	fontManager.finalize();
 	renderer.finalize(false);
 	return ret;

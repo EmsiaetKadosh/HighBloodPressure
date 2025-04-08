@@ -23,9 +23,10 @@
 // game basic
 #include "interact\InteractManager.h"
 #include "utils\IText.h"
+#include "render\TextureManager.h"
+#include "render\dx\direct.h"
 #include "game\world\Location.h" // required by Renderer.h
 #include "render\Renderer.h"
-#include "render\TextureManager.h"
 #include "ui\Hud.h"
 #include "ui\Window.h"
 

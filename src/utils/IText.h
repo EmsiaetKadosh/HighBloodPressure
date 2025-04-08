@@ -484,7 +484,7 @@ public:
 	}
 };
 
-interface IText {
+struct IText {
 	virtual ~IText() = default;
 	[[nodiscard]] virtual const String& getText() const noexcept = 0;
 	[[nodiscard]] virtual const RenderableString& getRenderableString() const noexcept = 0;

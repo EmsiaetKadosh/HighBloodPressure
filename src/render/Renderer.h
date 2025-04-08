@@ -20,12 +20,12 @@ class Game;
  */
 enum class UILocation : char { LEFT_TOP, LEFT, LEFT_BOTTOM, TOP, CENTER, BOTTOM, RIGHT_TOP, RIGHT, RIGHT_BOTTOM };
 
-interface IRenderable {
+struct IRenderable {
 	virtual ~IRenderable() = default;
 	virtual void render(double tickDelta, QWORD tickRendering) const noexcept = 0;
 };
 
-interface ITickable {
+struct ITickable {
 	virtual ~ITickable() = default;
 	virtual void tick() noexcept(false) = 0;
 };
