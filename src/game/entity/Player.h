@@ -43,17 +43,17 @@ public:
 	void tick() noexcept(false) override {
 		updatePosition();
 		accelerate = Vector2D();
-		if (interactManager.getKey(VK_UP).wasPressedAndDeal()) {
+		if (interactManager.getKey(VK_SPACE).wasPressedAndDeal()) {
 			if (isOnGround()) accelerate.setY(-0.4);
 			else if (airJump == 2) velocity.setY(-0.25), accelerate.setY(0), --airJump;
 			else if (airJump == 1) {
 				--airJump, velocity.setY(-0.4), accelerate.setY(0);
-				if (interactManager.getKey(VK_LEFT).isPressed()) velocity.setX(nMin(-0.35, velocity.getX()));
-				if (interactManager.getKey(VK_RIGHT).isPressed()) velocity.setX(nMax(0.35, velocity.getX()));
+				if (interactManager.getKey('A').isPressed()) velocity.setX(nMin(-0.35, velocity.getX()));
+				if (interactManager.getKey('D').isPressed()) velocity.setX(nMax(0.35, velocity.getX()));
 			}
 		}
-		if (interactManager.getKey(VK_LEFT).isPressed()) accelerate.add(-0.02, 0);
-		if (interactManager.getKey(VK_RIGHT).isPressed()) accelerate.add(0.02, 0);
+		if (interactManager.getKey('A').isPressed()) accelerate.add(-0.02, 0);
+		if (interactManager.getKey('D').isPressed()) accelerate.add(0.02, 0);
 		if (accelerate.getX() != 0) accelerate.setX(nRange(accelerate.getX(), (-maxSpeed - velocity.getX()) * 0.2, (maxSpeed - velocity.getX()) * 0.2));
 		Entity::tick();
 	}

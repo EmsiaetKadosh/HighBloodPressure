@@ -5,6 +5,7 @@
 #pragma once
 
 #include "..\..\utils\math.h"
+#include "..\..\utils\exception.h"
 
 using WorldID = QWORD;
 class Location;
@@ -64,18 +65,20 @@ class WorldTransportReason final {
 			reasons.emplace(r);
 			return r;
 		}
-	} inline static manager;
+	};
 
-	static const WorldTransportReason Shutdown;
+	static Manager manager;
+	static const WorldTransportReason& Shutdown;
 	const Reason* reason;
 	WorldTransportReason(const Reason& reason) : reason(&reason) {}
 
 public:
-	static const WorldTransportReason InitialGeneration;
-	static const WorldTransportReason WorldCollapse;
-	static const WorldTransportReason BlockBreak;
-	static const WorldTransportReason BlockReplace;
-	static const WorldTransportReason EntityTeleport;
+	static const WorldTransportReason& InitialGeneration;
+	static const WorldTransportReason& WorldCollapse;
+	static const WorldTransportReason& BlockBreak;
+	static const WorldTransportReason& BlockReplace;
+	static const WorldTransportReason& EntityTeleport;
+	static const WorldTransportReason& Debug;
 
 	WorldTransportReason() = delete;
 	WorldTransportReason(const WorldTransportReason&) = default;
@@ -126,6 +129,9 @@ public:
 	[[nodiscard]] Location toLocation() const noexcept { return Location({static_cast<double>(x), static_cast<double>(y)}, idWorld); }
 	void setPosition(const long long x, const long long y) noexcept { this->x = x, this->y = y; }
 	void setWorld(const WorldID idWorld) noexcept { this->idWorld = idWorld; }
+	[[nodiscard]] BlockLocation ofWorld(const WorldID id) const noexcept { return BlockLocation(x, y, id); }
+	[[nodiscard]] BlockLocation ofPosition(const int x, const int y) const noexcept { return BlockLocation(x, y, idWorld); }
+	[[nodiscard]] BlockLocation ofPosition(const Vector2D& pos) const noexcept { return BlockLocation(pos, idWorld); }
 	[[nodiscard]] String toString() const { return L"(" + std::to_wstring(x) + L", " + std::to_wstring(y) + L") @ " + std::to_wstring(idWorld); }
 
 	[[nodiscard]] static bool blockContains(const Vector2D& position, const Vector2D& other) { return position.getX() <= other.getX() && position.getY() <= other.getY() && position.getX() + 1.0 >= other.getX() && position.getY() + 1.0 >= other.getY(); }

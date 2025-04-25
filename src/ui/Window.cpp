@@ -182,7 +182,7 @@ void FloatWindow::render(double tickDelta, QWORD tickRendering) const noexcept {
 	int yf = y + interactSettings.actual.floatWindowMargin;
 
 	for (const RenderableString* str : strings.get()) {
-		fontManager.getDefault().draw(*str, xf, yf);
+		renderer.getFontManager().getDefault().draw(*str, xf, yf);
 		yf += str->getHeight();
 	}
 
@@ -287,7 +287,7 @@ void Widget::onResize() {
 
 void Button::render(const double tickDelta, QWORD tickRendering) const noexcept {
 	Widget::render(tickDelta, tickRendering);
-	if (name) fontManager.getDefault().drawCenter(name->getRenderableString(), left, top, width, height, colorSelector(foregroundColor));
+	if (name) renderer.getFontManager().getDefault().drawCenter(name->getRenderableString(), left, top, width, height, colorSelector(foregroundColor));
 }
 
 ConfirmWindow& ConfirmWindow::requireConfirm(const Function<void(Button&)>& func) {

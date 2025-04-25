@@ -10,6 +10,7 @@
 #include "..\utils\Task.h"
 #include "..\game\Animation.h"
 #include "..\interact\InteractManager.h"
+#include "..\utils\IText.h"
 #include "..\game\world\Location.h"
 #include "..\utils\Chars.h"
 
@@ -47,8 +48,8 @@ inline static constexpr Color TextColor = {
 class [[carlbeks::predecl, carlbeks::defineat("Entity.h")]] Entity;
 
 class Camera {
-	Vector2D position; // 当前位置
-	Vector2D targetPosition; // Camera需要移动到的位置
+	Vector2D position = Vector2D(); // 当前位置
+	Vector2D targetPosition = Vector2D(); // Camera需要移动到的实体的位置
 	Entity* renderingTarget = nullptr;
 	Entity* targeting = nullptr;
 	QWORD updateTick = 0;
@@ -66,9 +67,66 @@ public:
 	[[nodiscard]] Vector2D getTargetPosition() const noexcept { return targetPosition; }
 };
 
-class Renderer final : public ITickable {
+class IRenderer : public ITickable {
+protected:
+	int windowWidth = 0, windowHeight = 0;
+	int syncWidth = 0, syncHeight = 0; // 指示实时大小。为了防抖，只会在改变窗口大小结束时resize并重写windowWidth和windowHeight
+	mutable Camera camera;
+	mutable IFontManager* fontManager;
+
+public:
+	double fps = 0, tps = 0;
+	Task resizeReloadBitmap{nullptr};
+	Vector2D mousePointingAtWorld = Vector2D();
+	BlockLocation mousePointingAtBlock = BlockLocation(0, 0, 0);
+	Animation mousePointingAtFlash = Animation().includeReverse().setDuration(40).features(Animation::AS_QUADRATIC).depends(Animation::AD_TIME);
+
+	IRenderer() = default;
+	IRenderer(const IRenderer&) = delete;
+	IRenderer(IRenderer&&) = delete;
+	IRenderer& operator=(const IRenderer&) = delete;
+	IRenderer& operator=(IRenderer&&) = delete;
+	~IRenderer() override = default;
+
+	/**
+	 * @brief 创建实例后，必须调用
+	 */
+	virtual IRenderer& postInitialize() noexcept = 0;
+
+	void syncSize(const int width, const int height) noexcept { syncWidth = width, syncHeight = height; }
+	[[nodiscard]] int getWidth() const noexcept { return windowWidth; }
+	[[nodiscard]] int getHeight() const noexcept { return windowHeight; }
+	[[nodiscard]] int getSyncWidth() const noexcept { return syncWidth; }
+	[[nodiscard]] int getSyncHeight() const noexcept { return syncHeight; }
+	[[nodiscard]] IFontManager& getFontManager() const noexcept { return *fontManager; }
+	[[nodiscard]] Camera& getCamera() const { return camera; }
+
+	[[nodiscard]] virtual bool checkResizing() const = 0;
+	[[nodiscard]] virtual unsigned int changeColorFormat(unsigned int argb) const noexcept = 0;
+	virtual void finalize(bool isRenderThread) = 0;
+	virtual void gameStartRender() = 0;
+	virtual void gameEndRender() = 0;
+	virtual void requireResize() = 0;
+	virtual void resize(int width, int height) = 0;
+	virtual void assertRendering() const = 0;
+	virtual void assertRenderThread() const = 0;
+	virtual void resizeStart() = 0;
+	virtual void resizeShow() const = 0;
+	virtual void resizeEnd() = 0;
+	virtual void renderMouseWorld() = 0;
+	Vector2D world2client(Vector2D world) const { return world.subtract(camera.getCurrentPosition()).multiply(interactSettings.actual.mapScale).add(windowWidth >> 1, windowHeight >> 1); }
+	Vector2D client2world(const int x, const int y) const { return Vector2D(x - (windowWidth >> 1), y - (windowHeight >> 1)).divide(interactSettings.actual.mapScale).add(camera.getCurrentPosition()); }
+
+	virtual void fill(int x, int y, int w, int h, unsigned int color) const = 0;
+	virtual void fill(const RECT* rect, unsigned int color) const = 0;
+	virtual void fillWorld(const Vector2D& from, const Vector2D& to, unsigned int color) const = 0;
+	virtual void fillWorld(const Vector2D& from, double blockWidth, double blockHeight, unsigned int color) const = 0;
+	virtual void fillWorldBlock(const BlockLocation& from, unsigned int color) const = 0;
+};
+
+class GdiRenderer final : public IRenderer {
 	friend class Game;
-	friend class Font;
+	friend class GdiFont;
 	friend LRESULT __stdcall WndProc(HWND hwnd, UINT uMsg, WPARAM wParam, LPARAM lParam);
 	inline static BLENDFUNCTION blendFunction = {
 		.BlendOp = AC_SRC_OVER, // Only
@@ -77,7 +135,6 @@ class Renderer final : public ITickable {
 		.AlphaFormat = 0, // Not AC_SRC_ALPHA
 	};
 	mutable List<HGDIOBJ> failed;
-	mutable Camera camera;
 	HDC MainDC = nullptr; // 8
 	HDC resizeCopyDC = nullptr; // 8
 	HBITMAP resizeCopyBitmap = nullptr; // 8
@@ -87,11 +144,6 @@ class Renderer final : public ITickable {
 	HBITMAP assistBitmap = nullptr; // 8
 	Thread::id renderThread = std::this_thread::get_id();
 	Time lastPostRefreshTime = getCurrentTime(); // 8
-	int windowWidth = 0, windowHeight = 0; // 4 + 4
-	/**
-	 * 指示实时大小。为了防抖，只会在改变窗口大小结束时resize并重写windowWidth和windowHeight
-	 */
-	int syncWidth = 0, syncHeight = 0; // 4 + 4
 	/**
 	 * 缓存resizeCopyBitmap的宽高
 	 */
@@ -101,21 +153,12 @@ class Renderer final : public ITickable {
 	bool isResizeRequired = false; // 1
 	char refreshedHDC = -1; // 1
 
-public:
-	double fps = 0, tps = 0;
-	byte reserved[4]{}; // 4
-	Task resizeReloadBitmap{nullptr};
-	Vector2D mousePointingAtWorld = Vector2D();
-	BlockLocation mousePointingAtBlock = BlockLocation(0, 0, 0);
-	Animation mousePointingAtFlash = Animation().includeReverse().setDuration(40).features(Animation::AS_QUADRATIC).depends(Animation::AD_TIME);
-
-private:
-	void gameStartRender() noexcept;
-	void gameEndRender() noexcept;
+	void gameStartRender() noexcept override;
+	void gameEndRender() noexcept override;
 	/**
 	 * 负责转发所有resize信息
 	 */
-	void resize(int width, int height) noexcept(false);
+	void resize(int width, int height) noexcept(false) override;
 
 	static bool $deleteObject(const HGDIOBJ obj) noexcept {
 		const unsigned type = GetObjectType(obj);
@@ -180,7 +223,7 @@ private:
 	}
 
 public:
-	Renderer() {
+	GdiRenderer() {
 		Logger.put(L"Renderer created");
 		resizeReloadBitmap.func = [this](Task& task) {
 			Logger.info(L"Scheduled task: resize reload bitmap " + std::to_wstring(windowWidth) + L" * " + std::to_wstring(windowHeight));
@@ -200,35 +243,33 @@ public:
 		};
 	}
 
-	~Renderer() override {
+	~GdiRenderer() override {
 		Logger.put(L"Renderer destroyed");
 		// finalize();
+		fontManager->finalize();
+		delete fontManager;
 	}
 
-	void finalize(bool isRenderThread) noexcept;
-	void requireResize() noexcept { isResizeRequired = true; }
-	void syncSize(int width, int height) noexcept(false);
-	[[nodiscard]] int getWidth() const noexcept { return windowWidth; }
-	[[nodiscard]] int getHeight() const noexcept { return windowHeight; }
-	[[nodiscard]] int getSyncWidth() const noexcept { return syncWidth; }
-	[[nodiscard]] int getSyncHeight() const noexcept { return syncHeight; }
-	[[nodiscard]] bool checkResizing() const noexcept { return isResizing; }
-	void tick() noexcept(false) override;
+	IRenderer& postInitialize() noexcept override { return fontManager = new GdiFontManager(this), *this; }
+
+	[[nodiscard]] bool checkResizing() const noexcept override { return isResizing; }
 	/**
 	 * @attention 会忽略A透明度值
 	 * @param argb ARGB式颜色
 	 * @return int BGR式颜色
 	 */
-	[[nodiscard]] static unsigned int changeColorFormat(const unsigned int argb) { return argb << 16 & 0xff0000 | argb & 0xff00 | argb >> 16 & 0xff; }
-	void assertRendering() const noexcept(false) { if (!isRendering) throw InvalidOperationException(L"Operation should be done while rendering"); }
-	void assertRenderThread() const noexcept(false) { if (std::this_thread::get_id() != renderThread) throw InvalidOperationException(L"Operation should be done in render thread"); }
-	Camera& getCamera() const noexcept { return camera; }
-	void resizeStart() noexcept { isResizing = true; }
-	void resizeShow() const noexcept { StretchBlt(MainDC, 0, 0, syncWidth, syncHeight, resizeCopyDC, 0, 0, resizeCopyWidth, resizeCopyHeight, SRCCOPY); }
-	void resizeEnd() noexcept;
-	void renderMouseWorld() noexcept;
+	[[nodiscard]] unsigned int changeColorFormat(const unsigned int argb) const noexcept override { return argb << 16 & 0xff0000 | argb & 0xff00 | argb >> 16 & 0xff; }
+	void requireResize() noexcept override { isResizeRequired = true; }
+	void assertRendering() const noexcept(false) override { if (!isRendering) throw InvalidOperationException(L"Operation should be done while rendering"); }
+	void assertRenderThread() const noexcept(false) override { if (std::this_thread::get_id() != renderThread) throw InvalidOperationException(L"Operation should be done in render thread"); }
+	void resizeStart() noexcept override { isResizing = true; }
+	void resizeShow() const noexcept override { StretchBlt(MainDC, 0, 0, syncWidth, syncHeight, resizeCopyDC, 0, 0, resizeCopyWidth, resizeCopyHeight, SRCCOPY); }
+	void resizeEnd() noexcept override;
+	void renderMouseWorld() noexcept override;
+	void finalize(bool isRenderThread) noexcept override;
+	void tick() noexcept(false) override;
 
-	void fill(const int x, const int y, const int w, const int h, const unsigned int color) const {
+	void fill(const int x, const int y, const int w, const int h, const unsigned int color) const override {
 		assertRendering();
 		//assertRenderThread();
 		if ((color & 0xff000000) == 0) return;
@@ -258,7 +299,7 @@ public:
 		}
 	}
 
-	void fill(const RECT* const rect, const unsigned int color) const {
+	void fill(const RECT* const rect, const unsigned int color) const override {
 		assertRendering();
 		//assertRenderThread();
 		if ((color & 0xff000000) == 0) return;
@@ -282,7 +323,7 @@ public:
 		}
 	}
 
-	void fillWorld(const Vector2D& from, const Vector2D& to, const unsigned int color) const {
+	void fillWorld(const Vector2D& from, const Vector2D& to, const unsigned int color) const override {
 		RECT rect{};
 		Vector2D vector = (from - camera.getCurrentPosition()) * interactSettings.actual.mapScale;
 		rect.left = static_cast<long>(vector.getX()) + (windowWidth >> 1);
@@ -297,7 +338,7 @@ public:
 		fill(&rect, color);
 	}
 
-	void fillWorld(const Vector2D& from, const double blockWidth, const double blockHeight, const unsigned int color) const {
+	void fillWorld(const Vector2D& from, const double blockWidth, const double blockHeight, const unsigned int color) const override {
 		RECT rect{};
 		Vector2D vector = (from - camera.getCurrentPosition()) * interactSettings.actual.mapScale;
 		rect.left = static_cast<long>(vector.getX()) + (windowWidth >> 1);
@@ -312,7 +353,7 @@ public:
 		fill(&rect, color);
 	}
 
-	void fillWorldBlock(const BlockLocation& from, const unsigned int color) const { fillWorld(from.getPosition(), 1, 1, color); }
+	void fillWorldBlock(const BlockLocation& from, const unsigned int color) const override { fillWorld(from.getPosition(), 1, 1, color); }
 };
 
-extern Renderer renderer;
+extern IRenderer& renderer;

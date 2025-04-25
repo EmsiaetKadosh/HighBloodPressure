@@ -223,7 +223,7 @@ class InteractSettings {
 		 */
 		double uiScale = 1;
 		double screenScale = 1;
-		double smoothCamera = 0.95; // 相机平滑度。为0，始终瞬时设置相机的位置；为1，相机不动。
+		double smoothCamera = 0.9; // 相机平滑度。为0，始终瞬时设置相机的位置；为1，相机不动。
 		long long msPerTick = 10;
 		long long msPerRender = 1;
 		unsigned int floatWindowBackground = 0xdd000000;

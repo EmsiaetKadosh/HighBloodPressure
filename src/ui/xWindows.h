@@ -35,7 +35,7 @@ public:
 	void onClose() override { pop(); }
 
 	void render(const double tickDelta, QWORD tickRendering) const noexcept override {
-		fontManager.getDefault().drawCenter(title.getRenderableString(), 0, 0, renderer.getWidth(), renderer.getHeight());
+		renderer.getFontManager().getDefault().drawCenter(title.getRenderableString(), 0, 0, renderer.getWidth(), renderer.getHeight());
 		Window::render(tickDelta, tickRendering);
 	}
 };

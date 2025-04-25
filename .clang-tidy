@@ -33,6 +33,7 @@ Checks: >
   -google-readability-namespace-comments,
   -google-runtime-int,
   -hicpp-avoid-c-arrays,
+  -hicpp-avoid-goto,
   -hicpp-explicit-conversions,
   -hicpp-member-init,
   -hicpp-no-array-decay,

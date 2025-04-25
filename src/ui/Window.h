@@ -250,7 +250,7 @@ public:
 		w = renderer.getWidth(), h = renderer.getHeight();
 		w >>= 2, h >>= 2;
 		renderer.fill(w, h, w + w, h + h, 0xcc222222);
-		fontManager.getDefault().drawCenter(text->getRenderableString(), w, h, w + w, h + (h >> 1), 0xffeeeeee);
+		renderer.getFontManager().getDefault().drawCenter(text->getRenderableString(), w, h, w + w, h + (h >> 1), 0xffeeeeee);
 		for (const ObjectHolder<Widget>& widget : widgets) widget->render(tickDelta, tickRendering);
 	}
 

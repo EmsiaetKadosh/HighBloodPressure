@@ -2,21 +2,8 @@
 // Created by EmsiaetKadosh on 25-4-4.
 //
 
-#include "..\..\def.h"
-#include "..\..\hbp.h"
-#include "..\..\utils\exception.h"
-#include "..\..\utils\Chars.h"
-
 #include "direct.h"
 #include "hlsl.h"
-
-inline void DirectX12Renderer::requireSucceeded(const HRESULT hr, const String& msg) noexcept(false) {
-	if (FAILED(hr)) {
-		const Map<QWORD, String>::iterator iter = directReturns.errors.find(hr);
-		if (iter == directReturns.errors.end()) throw RuntimeException(L"Returns " + qwtowb16(hr, 8) + L"; " + msg);
-		throw RuntimeException(iter->second + L"; " + msg);
-	}
-}
 
 /**
  * @brief 辅助函数，获取硬件适配器
@@ -32,14 +19,14 @@ inline void DirectX12Renderer::getHardwareAdapter(IDXGIFactory4* pFactory, IDXGI
 	ComPtr<IDXGIAdapter1> adapter;
 	ComPtr<IDXGIFactory6> factory;
 	if (SUCCEEDED(pFactory->QueryInterface(IID_PPV_ARGS(&factory)))) // DXGI 1.6+ 支持按性能排序枚举适配器
-		for (UINT adapterIndex = 0; SUCCEEDED(factory->EnumAdapterByGpuPreference(adapterIndex, requestHighPerformanceAdapter ? DXGI_GPU_PREFERENCE_HIGH_PERFORMANCE : DXGI_GPU_PREFERENCE_UNSPECIFIED, IID_PPV_ARGS(&adapter))); ++adapterIndex) {
+		for (unsigned int adapterIndex = 0; SUCCEEDED(factory->EnumAdapterByGpuPreference(adapterIndex, requestHighPerformanceAdapter ? DXGI_GPU_PREFERENCE_HIGH_PERFORMANCE : DXGI_GPU_PREFERENCE_UNSPECIFIED, IID_PPV_ARGS(&adapter))); ++adapterIndex) {
 			DXGI_ADAPTER_DESC1 desc;
 			discard_return(adapter->GetDesc1(&desc));
 			if (desc.Flags & DXGI_ADAPTER_FLAG_SOFTWARE) continue;
 			if (SUCCEEDED(D3D12CreateDevice(adapter.Get(), D3D_FEATURE_LEVEL_12_2, _uuidof(ID3D12Device), nullptr))) break;
 		}
 	if (adapter.Get() == nullptr)
-		for (UINT adapterIndex = 0; SUCCEEDED(pFactory->EnumAdapters1(adapterIndex, &adapter)); ++adapterIndex) {
+		for (unsigned int adapterIndex = 0; SUCCEEDED(pFactory->EnumAdapters1(adapterIndex, &adapter)); ++adapterIndex) {
 			DXGI_ADAPTER_DESC1 desc;
 			discard_return(adapter->GetDesc1(&desc));
 			if (desc.Flags & DXGI_ADAPTER_FLAG_SOFTWARE) continue;
@@ -105,20 +92,9 @@ void DirectX12Renderer::createRootSignature(ComPtr<ID3D12RootSignature>& rootSig
 
 void DirectX12Renderer::createPipelineState(ComPtr<ID3D12PipelineState>& coloredPipelineState, ComPtr<ID3D12PipelineState>& texturePipelineState, ComPtr<ID3D12Device4>& device, ComPtr<ID3D12RootSignature>& rootSignature) noexcept(false) {
 	// TODO(EmsiaetKadosh): 编译着色器
-	// 定义顶点输入布局
-	D3D12_INPUT_ELEMENT_DESC coloredLayout[] = {
-		{ "POSITION", 0, DXGI_FORMAT_R32G32B32_FLOAT, 0, 0, D3D12_INPUT_CLASSIFICATION_PER_VERTEX_DATA, 0 },
-		{ "COLOR", 0, DXGI_FORMAT_R8G8B8A8_UNORM, 0, 12, D3D12_INPUT_CLASSIFICATION_PER_VERTEX_DATA, 0 }
-	};
-	D3D12_INPUT_ELEMENT_DESC textureLayout[] = {
-		{ "POSITION", 0, DXGI_FORMAT_R32G32B32_FLOAT, 0, 0, D3D12_INPUT_CLASSIFICATION_PER_VERTEX_DATA, 0 },
-		{ "COLOR", 0, DXGI_FORMAT_R8G8B8A8_UNORM, 0, 12, D3D12_INPUT_CLASSIFICATION_PER_VERTEX_DATA, 0 },
-		{ "TEXCOORD", 0, DXGI_FORMAT_R32G32_FLOAT, 0, 16, D3D12_INPUT_CLASSIFICATION_PER_VERTEX_DATA, 0 },
-		{ "NORMAL", 0, DXGI_FORMAT_R16G16B16A16_SNORM, 0, 24, D3D12_INPUT_CLASSIFICATION_PER_VERTEX_DATA, 0 }
-	};
 	// 填充PSO描述结构
 	D3D12_GRAPHICS_PIPELINE_STATE_DESC psoDesc = {};
-	psoDesc.InputLayout = { coloredLayout, 1 };
+	psoDesc.InputLayout = { ColoredVertex::LAYOUT, 1 };
 	psoDesc.pRootSignature = rootSignature.Get();
 	discard_return(psoDesc.VS);
 	discard_return(psoDesc.PS);
@@ -133,7 +109,7 @@ void DirectX12Renderer::createPipelineState(ComPtr<ID3D12PipelineState>& colored
 	requireSucceeded(device->CreateGraphicsPipelineState(&psoDesc, IID_PPV_ARGS(&coloredPipelineState)), L"Failed to create graphics pipeline");
 	// 第二结构
 	D3D12_GRAPHICS_PIPELINE_STATE_DESC psoDesc2 = {};
-	psoDesc2.InputLayout = { textureLayout, 1 };
+	psoDesc2.InputLayout = { TextureVertex::LAYOUT, 1 };
 	psoDesc2.pRootSignature = rootSignature.Get();
 	discard_return(psoDesc2.VS);
 	discard_return(psoDesc2.PS);
@@ -181,7 +157,7 @@ void DirectX12Renderer::initialize() noexcept(false) {
 	// 4. 创建RTV描述符堆
 	{
 		D3D12_DESCRIPTOR_HEAP_DESC desc = {};
-		desc.NumDescriptors = 2;
+		desc.NumDescriptors = DirectX12Configs::SwapFrameCount * 3;
 		desc.Type = D3D12_DESCRIPTOR_HEAP_TYPE_RTV;
 		desc.Flags = D3D12_DESCRIPTOR_HEAP_FLAG_NONE;
 		hr = device->CreateDescriptorHeap(&desc, IID_PPV_ARGS(&rtvHeap));
@@ -191,10 +167,20 @@ void DirectX12Renderer::initialize() noexcept(false) {
 	// 5. 创建帧缓冲渲染RTV
 	{
 		CD3DX12_CPU_DESCRIPTOR_HANDLE rtvHandle(rtvHeap->GetCPUDescriptorHandleForHeapStart());
-		for (UINT n = 0; n < RenderTargetCount; ++n) {
-			hr = swapChain->GetBuffer(n, IID_PPV_ARGS(&renderTargets[n]));
-			requireSucceeded(hr, L"Failed to get render target; n = " + std::to_wstring(n));
-			device->CreateRenderTargetView(renderTargets[n].Get(), nullptr, rtvHandle);
+		for (unsigned int n = 0; n < DirectX12Configs::SwapFrameCount; ++n) {
+			hr = swapChain->GetBuffer(n * 3, IID_PPV_ARGS(&coloredBuffer[n]));
+			requireSucceeded(hr, L"Failed to get colored buffer; n = " + std::to_wstring(n));
+			device->CreateRenderTargetView(coloredBuffer[n].Get(), nullptr, rtvHandle);
+			rtvHandle.Offset(1, rtvDescriptorSize);
+
+			hr = swapChain->GetBuffer(n * 3 + 1, IID_PPV_ARGS(&textureBuffer[n]));
+			requireSucceeded(hr, L"Failed to get texture buffer; n = " + std::to_wstring(n));
+			device->CreateRenderTargetView(textureBuffer[n].Get(), nullptr, rtvHandle);
+			rtvHandle.Offset(1, rtvDescriptorSize);
+
+			hr = swapChain->GetBuffer(n * 3 + 2, IID_PPV_ARGS(&textBuffer[n]));
+			requireSucceeded(hr, L"Failed to get text buffer; n = " + std::to_wstring(n));
+			device->CreateRenderTargetView(textBuffer[n].Get(), nullptr, rtvHandle);
 			rtvHandle.Offset(1, rtvDescriptorSize);
 		}
 	}
@@ -215,7 +201,7 @@ void DirectX12Renderer::initialize() noexcept(false) {
 	}
 	// 以下在示例的LoadAssets
 	// 1. 根签名
-		createRootSignature(rootSignature, device);
+	createRootSignature(rootSignature, device);
 	// 2. PSO
 	createPipelineState(coloredPipelineState, texturePipelineState, device, rootSignature);
 }
@@ -229,7 +215,7 @@ void DirectX12Renderer::cleanup() noexcept(false) {
 
 void DirectX12Renderer::awaitFrame() noexcept(false) {
 	// 信号并等待
-	const UINT64 fence = fenceValue;
+	const unsigned long long fence = fenceValue;
 	discard_return(commandQueue->Signal(this->fence.Get(), fence));
 	++this->fenceValue;
 	if (this->fence->GetCompletedValue() < fence) {
@@ -253,22 +239,31 @@ void DirectX12Renderer::render() noexcept(false) {
 	// 4. 清除渲染目标
 	constexpr float clearColor[] = { 0.2f, 0.4f, 0.6f, 1.0f };
 	commandList->ClearRenderTargetView(rtvHandle, clearColor, 0, nullptr);
-	// 5.1. 设置图形管线状态
+	// 5.0. 设置图形管线状态
 	commandList->SetGraphicsRootSignature(rootSignature.Get());
-	commandList->SetPipelineState(coloredPipelineState.Get());
 	commandList->IASetPrimitiveTopology(D3D_PRIMITIVE_TOPOLOGY_TRIANGLELIST);
-	D3D12_VERTEX_BUFFER_VIEW view = {
-		.BufferLocation = renderTargets[frameIndex]->GetGPUVirtualAddress(),
-		.SizeInBytes = 0,
-		.StrideInBytes = sizeof(ColoredVertex)
-	};
-	commandList->IASetVertexBuffers(0, 1, &view);
-	// 6.1. 绘制调用
+	commandList->SetPipelineState(coloredPipelineState.Get());
+	// 5.1. 设置图形管线状态 6.1. 绘制调用
+	{
+		const D3D12_VERTEX_BUFFER_VIEW coloredView = {
+			.BufferLocation = coloredBuffer[frameIndex]->GetGPUVirtualAddress(),
+			.SizeInBytes = 0,
+			.StrideInBytes = sizeof(ColoredVertex)
+		};
+		commandList->IASetVertexBuffers(0, 1, &coloredView);
+	}
 	commandList->DrawInstanced(0 /* TODO(EmsiaetKadosh): 数量 */, 1, 0, 0); // 示例：绘制一个三角形
-	// 5.2. 设置图形管线状态
-	commandList->SetPipelineState(texturePipelineState.Get()    );
-	// 6.2. 绘制调用
-	commandList->DrawInstanced(0 /* TODO(EmsiaetKadosh): 数量 */, 1, 0 /* 数量 */, 0); // 示例：绘制一个三角形
+	// 5.2. 设置图形管线状态 6.2. 绘制调用
+	{
+		commandList->SetPipelineState(texturePipelineState.Get());
+		const D3D12_VERTEX_BUFFER_VIEW textureView = {
+			.BufferLocation = textureBuffer[frameIndex]->GetGPUVirtualAddress(),
+			.SizeInBytes = 0,
+			.StrideInBytes = sizeof(TextureVertex)
+		};
+		commandList->IASetVertexBuffers(0, 1, &textureView);
+	}
+	commandList->DrawInstanced(0 /* TODO(EmsiaetKadosh): 数量 */, 1, 0, 0); // 示例：绘制一个三角形
 	// 7. 提交命令列表
 	requireSucceeded(commandList->Close(), L"Failed to close command list");
 	ID3D12CommandList* cmdLists[] = { commandList.Get() };
@@ -276,3 +271,23 @@ void DirectX12Renderer::render() noexcept(false) {
 	// 8. 呈现交换链
 	requireSucceeded(swapChain->Present(1, 0), L"Failed to present swap chain");
 }
+
+bool DirectX12Renderer::checkResizing() const { return false; }
+unsigned int DirectX12Renderer::changeColorFormat(const unsigned int argb) const noexcept { return argb; }
+void DirectX12Renderer::tick() noexcept(false) {}
+void DirectX12Renderer::finalize(bool isRenderThread) {}
+void DirectX12Renderer::gameStartRender() {}
+void DirectX12Renderer::gameEndRender() {}
+void DirectX12Renderer::requireResize() {}
+void DirectX12Renderer::resize(int width, int height) {}
+void DirectX12Renderer::assertRendering() const {}
+void DirectX12Renderer::assertRenderThread() const {}
+void DirectX12Renderer::resizeStart() {}
+void DirectX12Renderer::resizeShow() const {}
+void DirectX12Renderer::resizeEnd() {}
+void DirectX12Renderer::renderMouseWorld() {}
+void DirectX12Renderer::fill(int x, int y, int w, int h, unsigned color) const {}
+void DirectX12Renderer::fill(const RECT* rect, unsigned color) const {}
+void DirectX12Renderer::fillWorld(const Vector2D& from, const Vector2D& to, unsigned color) const {}
+void DirectX12Renderer::fillWorld(const Vector2D& from, double blockWidth, double blockHeight, unsigned color) const {}
+void DirectX12Renderer::fillWorldBlock(const BlockLocation& from, unsigned color) const {}

@@ -252,10 +252,10 @@ class Entity : public IRenderable, public ITickable {
 	World* world = nullptr;
 
 protected:
-	BoundingBox boundingBox;
+	BoundingBox boundingBox = BoundingBox();
 	EntityMomentum momentum;
-	Vector2D velocity;
-	Vector2D accelerate;
+	Vector2D velocity = Vector2D();
+	Vector2D accelerate = Vector2D();
 	double maxSpeed = 1.0;
 	double maxHealth = 100;
 	double health = 100;
@@ -294,6 +294,7 @@ public:
 	[[nodiscard]] const BoundingBox& getBoundingBox() const noexcept { return this->boundingBox; }
 	[[nodiscard]] Location getLocation() const noexcept { return momentum.location; }
 	[[nodiscard]] Vector2D getVelocity() const noexcept { return this->velocity; }
+	[[nodiscard]] Vector2D getAcceleration() const noexcept { return this->accelerate; }
 	[[nodiscard]] double getMaxSpeed() const noexcept { return this->maxSpeed; }
 	[[nodiscard]] RECT getCoveringBlocks() const noexcept { return boundingBox.getCoveringBlocks(momentum.location.getPosition()); }
 	[[nodiscard]] EntityMomentum& getMomentum() noexcept { return this->momentum; }

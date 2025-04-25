@@ -15,6 +15,8 @@ class World : public IRenderable, public ITickable {
 	WorldID idWorld = 0;
 	Map<QWORD, Entity*> entities;
 	Map<BlockLocation, Block*, BlockLocation::Less> blocks;
+	AtomicStorage entityGuard;
+	AtomicStorage blockGuard;
 	using IterEntity = Map<QWORD, Entity*>::const_iterator;
 	using IterBlock = Map<BlockLocation, Block*, BlockLocation::Less>::const_iterator;
 
@@ -29,12 +31,16 @@ public:
 	}
 
 	void render(const double tickDelta, const QWORD tickRendering) const noexcept override {
+		blockGuard.atomicAcquire();
 		for (const auto& [location, block] : blocks) block->render(tickDelta, tickRendering);
+		blockGuard.atomicRelease();
+		entityGuard.atomicAcquire();
 		for (const auto& [id, entity] : entities) entity->render(tickDelta, tickRendering);
+		entityGuard.atomicRelease();
 		for (const auto& [location, block] : blocks) block->renderShadow();
 	}
 
-	virtual int addEntity(Entity* entity, const WorldTransportReason reason) {
+	virtual int addEntity(Entity* entity, const WorldTransportReason reason) noexcept {
 		if (!entity) Failed();
 		if (!entity->idEntity) Failed();
 		if (entity->momentum.getLocation().getWorld()) Failed();
@@ -43,14 +49,18 @@ public:
 		entity->onEnterWorld(this, reason);
 		entity->changeWorld(idWorld);
 		entity->world = this;
+		entityGuard.atomicAcquire();
 		entities.emplace(entity->idEntity, entity);
+		entityGuard.atomicRelease();
 		Success();
 	}
 
-	virtual int removeEntity(Entity* entity, const WorldTransportReason reason) {
+	virtual int removeEntity(Entity* entity, const WorldTransportReason reason) noexcept {
 		if (!entity) Failed();
 		if (!entity->idEntity) Failed();
+		entityGuard.atomicAcquire();
 		if (!entities.erase(entity->idEntity)) Failed();
+		entityGuard.atomicRelease();
 		if (!reason.isEntityReason()) Failed();
 		entity->onExitWorld(this, reason);
 		entity->changeWorld(idWorld);
@@ -58,23 +68,27 @@ public:
 		Success();
 	}
 
-	virtual int addBlock(Block* block, const WorldTransportReason reason) {
+	virtual int addBlock(Block* block, const WorldTransportReason reason) noexcept {
 		if (!block) Failed();
 		if (block->getLocation().getWorld()) Failed();
 		if (block->world) Failed();
 		if (blocks.contains(block->getLocation())) Failed();
 		if (!reason.isBlockReason()) Failed();
+		blockGuard.atomicAcquire();
 		blocks.emplace(block->getLocation(), block);
+		blockGuard.atomicRelease();
 		block->onEnterWorld(this, reason);
 		block->location.setWorld(idWorld);
 		block->world = this;
 		Success();
 	}
 
-	virtual int removeBlock(Block* block, const WorldTransportReason reason) {
+	virtual int removeBlock(Block* block, const WorldTransportReason reason) noexcept {
 		if (!block) Failed();
 		if (block->getLocation().getWorld() != idWorld) Failed();
+		blockGuard.atomicAcquire();
 		if (!blocks.erase(block->getLocation())) Failed();
+		blockGuard.atomicRelease();
 		if (!reason.isBlockReason()) Failed();
 		block->onExitWorld(this, reason);
 		block->location.setWorld(0);
@@ -82,26 +96,28 @@ public:
 		Success();
 	}
 
-	virtual int removeBlockAt(const BlockLocation& location, const WorldTransportReason reason) {
+	virtual int removeBlockAt(const BlockLocation& location, const WorldTransportReason reason) noexcept {
 		if (!reason.isBlockReason()) Failed();
 		if (location.getWorld() != idWorld) Failed();
 		const IterBlock it = blocks.find(location);
 		if (it == blocks.cend()) Failed();
 		Block* block = it->second;
+		blockGuard.atomicAcquire();
 		blocks.erase(it);
+		blockGuard.atomicRelease();
 		block->onExitWorld(this, reason);
 		block->location.setWorld(0);
 		block->world = nullptr;
 		Success();
 	}
 
-	[[nodiscard]] virtual Block* getBlockAt(const BlockLocation& location) const {
+	[[nodiscard]] virtual Block* getBlockAt(const BlockLocation& location) const noexcept {
 		const IterBlock it = blocks.find(location);
 		if (it == blocks.cend()) return nullptr;
 		return it->second;
 	}
 
-	virtual void onRemove() {
+	virtual void onRemove() noexcept(false) {
 		// Entity不需要再此处删除，交给EntityManager管理
 		for (auto& [id, entity] : entities) {
 			entity->onExitWorld(this, WorldTransportReason::WorldCollapse);
@@ -126,14 +142,14 @@ public:
 	 * @param entity 目标实体
 	 * @return int 是否成功
 	 */
-	void adaptEntityVelocity(Entity& entity) const;
+	void adaptEntityVelocity(Entity& entity) const noexcept(false);
 
 	/**
 	 * @brief 获取射线穿过方块的列表。
 	 * @param startAt 起始点
 	 * @param direction 射线方向、长度
 	 */
-	[[nodiscard]] RayTraceResults rayTraceBlocks(const Vector2D& startAt, const Vector2D& direction) const;
+	[[nodiscard]] RayTraceResults rayTraceBlocks(const Vector2D& startAt, const Vector2D& direction) const noexcept(false);
 
 	/**
 	 * @brief 获取一个碰撞箱移动后撞到的方块列表。
@@ -141,7 +157,7 @@ public:
 	 * @param location 碰撞箱起始位置
 	 * @param direction 移动方向
 	 */
-	[[nodiscard]] BoundingBoxCollideResults boundingBoxCollideBlocks(const BoundingBox& boundingBox, const Location& location, const Vector2D& direction) const;
+	[[nodiscard]] BoundingBoxCollideResults boundingBoxCollideBlocks(const BoundingBox& boundingBox, const Location& location, const Vector2D& direction) const noexcept(false);
 };
 
 class WorldManager {

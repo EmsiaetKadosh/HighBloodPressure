@@ -4,6 +4,7 @@
 
 #pragma once
 
+class Entity;
 class RayTraceBlockResult;
 class RayTraceEntityResult;
 struct RayTraceResults;

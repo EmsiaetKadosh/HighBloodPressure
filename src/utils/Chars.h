@@ -53,35 +53,7 @@ static constexpr wchar Table16[17] = L"0123456789ABCDEF";
  * @param fills 填充位数。返回的字符串长度一定不小于该值
  * @return String类型
  */
-[[nodiscard]] inline String uitowb16(unsigned int value, const unsigned int fills = 1) noexcept {
-	String ret;
-	if (fills >= 8 || value < static_cast<unsigned int>(1) << fills * 4) {
-		ret.assign(fills, L'0');
-		for (unsigned int i = fills - 1; i && value; --i) {
-			ret[i] = Table16[value & 0xf];
-			value >>= 4;
-		}
-	} else {
-		unsigned int i = 0;
-		while (i < 8) {
-			if (value >> i & 0xf) break;
-			++i;
-		}
-		while (i < 8) {
-			ret.push_back(Table16[value >> i & 0xf]);
-			++i;
-		}
-		if (ret.empty()) ret = L"0";
-	}
-	return ret;
-}
 
-/**
- * 将数字转换为字符串
- * @param value 要转换的数字
- * @param fills 填充位数。返回的字符串长度一定不小于该值
- * @return String类型
- */
 [[nodiscard]] inline String qwtowb16(QWORD value, const unsigned int fills = 1) noexcept {
 	String ret;
 	if (fills >= 16 || value < static_cast<QWORD>(1) << fills * 4) {
@@ -90,15 +62,19 @@ static constexpr wchar Table16[17] = L"0123456789ABCDEF";
 			ret[i] = Table16[value & 0xf];
 			value >>= 4;
 		}
-	} else {
-		QWORD i = 0;
-		while (i < 16) {
-			if (value >> i & 0xf) break;
-			++i;
-		}
-		while (i < 16) {
+		if (value) ret[0] = Table16[value & 0xf];
+	}
+	else {
+		QWORD i = 64;
+		while (i) {
+			i -= 4;
+			if (!(value >> i & 0xf)) continue;
 			ret.push_back(Table16[value >> i & 0xf]);
-			++i;
+			break;
+		}
+		while (i) {
+			i -= 4;
+			ret.push_back(Table16[value >> i & 0xf]);
 		}
 		if (ret.empty()) ret = L"0";
 	}

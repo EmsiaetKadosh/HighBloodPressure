@@ -12,12 +12,20 @@
 void Camera::render(const double tickDelta, const QWORD tickRendering) noexcept {
 	renderingTarget = targeting;
 	if (renderingTarget) {
+		const Vector2D originalRelative = position - targetPosition;
 		renderingTarget->getMomentum().atomicAcquire();
 		targetPosition = renderingTarget->getLocation(tickDelta, tickRendering).getPosition();
 		renderingTarget->getMomentum().atomicRelease();
-		Vector2D&& rel = targetPosition - position;
-		if (dEquals(rel.lengthManhattan(), 0)) position = targetPosition;
-		else position.add(rel.multiply(1 - interactSettings.constants.smoothCamera));
+		Vector2D newRelative = renderingTarget->getVelocity() + renderingTarget->getAcceleration();
+		Vector2D selector = Vector2D(renderer.getWidth() / interactSettings.actual.mapScale, renderer.getHeight() / interactSettings.actual.mapScale);
+		selector.multiply(0.2);
+		newRelative.setX(newRelative.getX() * 5);
+		newRelative.setY(newRelative.getY());
+		newRelative.setX(nRangeSmooth(newRelative.getX(), -selector.getX(), selector.getX()));
+		newRelative.setY(nRangeSmooth(newRelative.getY(), -selector.getY(), selector.getY()));
+		Vector2D movement = newRelative - originalRelative;
+		movement.multiply(1 - interactSettings.constants.smoothCamera);
+		position = targetPosition + originalRelative + movement;
 	}
 }
 
@@ -26,17 +34,17 @@ void Camera::setTargetEntity(Entity* target) noexcept {
 	targeting = target;
 }
 
-void Renderer::gameStartRender() noexcept {
+void GdiRenderer::gameStartRender() noexcept {
 	isRendering = true;
 	renderThread = std::this_thread::get_id();
 	if (!MainDC || isResizeRequired || GetPixel(canvasDC, windowWidth - 1, windowHeight - 1) == 0xffffffff) resize(syncWidth, syncHeight);
 	if (!MainDC) return;
-	renderer.fill(0, interactSettings.actual.captionHeight, renderer.getWidth(), renderer.getHeight(), 0xff000000);
+	fill(0, interactSettings.actual.captionHeight, getWidth(), getHeight(), 0xff000000);
 }
 
-void Renderer::gameEndRender() noexcept {
-	fontManager.get(1).draw(L"FPS: " + std::to_wstring(fps), 0, interactSettings.actual.captionHeight, 0xffee0000);
-	fontManager.get(1).draw(L"TPS: " + std::to_wstring(tps), 0, interactSettings.actual.captionHeight + interactSettings.actual.fontHeight, 0xffee0000);
+void GdiRenderer::gameEndRender() noexcept {
+	fontManager->get(1).draw(L"FPS: " + std::to_wstring(fps), 0, interactSettings.actual.captionHeight, 0xffee0000);
+	fontManager->get(1).draw(L"TPS: " + std::to_wstring(tps), 0, interactSettings.actual.captionHeight + interactSettings.actual.fontHeight, 0xffee0000);
 	isRendering = false;
 	BitBlt(MainDC, 0, 0, windowWidth, windowHeight, canvasDC, 0, 0, SRCCOPY);
 	if (isResizing) {
@@ -45,7 +53,7 @@ void Renderer::gameEndRender() noexcept {
 			resizeCopyHeight = windowHeight;
 			resizeCopyBitmap = CreateCompatibleBitmap(MainDC, windowWidth, windowHeight);
 		} else if (resizeCopyWidth != windowWidth || resizeCopyHeight != windowHeight) {
-			renderer.deleteObject(resizeCopyBitmap);
+			deleteObject(resizeCopyBitmap);
 			resizeCopyBitmap = CreateCompatibleBitmap(MainDC, windowWidth, windowHeight);
 		}
 		SelectObject(resizeCopyDC, resizeCopyBitmap);
@@ -57,7 +65,8 @@ void Renderer::gameEndRender() noexcept {
  * 有一些事情必须在当前线程（renderThread）做，否则可能会有问题。
  * 虽然执行到此处程序必然是已经准备终止了，但是还是遵守一下。
  */
-void Renderer::finalize(const bool isRenderThread) noexcept {
+void GdiRenderer::finalize(const bool isRenderThread) noexcept {
+	fontManager->finalize();
 	if (isRenderThread) {
 		if (assistDC) DeleteDC(assistDC), assistDC = nullptr;
 		if (canvasDC) DeleteDC(canvasDC), canvasDC = nullptr;
@@ -68,7 +77,7 @@ void Renderer::finalize(const bool isRenderThread) noexcept {
 	} else if (MainDC) DeleteDC(MainDC), MainDC = nullptr;
 }
 
-void Renderer::resize(const int width, const int height) noexcept(false) {
+void GdiRenderer::resize(const int width, const int height) noexcept(false) {
 	if (refreshedHDC == -1) { // 尚未Post请求
 		lastPostRefreshTime = getCurrentTime();
 		if (!PostMessageW(MainWindowHandle, WM_APP_REQUESTHDC, 0, 0)) {
@@ -118,21 +127,16 @@ void Renderer::resize(const int width, const int height) noexcept(false) {
 	if (flag) {
 		interactSettings.setUiScale(static_cast<double>(height) / 2160.);
 		game.handleResize();
-		fontManager.resize(width, height);
+		fontManager->resize(width, height);
 	}
 }
 
-void Renderer::syncSize(const int width, const int height) noexcept(false) {
-	syncWidth = width;
-	syncHeight = height;
-}
-
-void Renderer::tick() noexcept(false) {
-	mousePointingAtWorld = Vector2D(interactManager.getMouseX() - (windowWidth >> 1), interactManager.getMouseY() - (windowHeight >> 1)).divide(interactSettings.actual.mapScale).add(camera.getCurrentPosition());
+void GdiRenderer::tick() noexcept(false) {
+	mousePointingAtWorld = client2world(interactManager.getMouseX(), interactManager.getMouseY());
 	mousePointingAtBlock = mousePointingAtWorld;
 }
 
-void Renderer::resizeEnd() noexcept {
+void GdiRenderer::resizeEnd() noexcept {
 	isResizing = false;
 	if (resizeCopyBitmap) deleteObject(resizeCopyBitmap);
 	resizeCopyBitmap = nullptr;
@@ -141,11 +145,23 @@ void Renderer::resizeEnd() noexcept {
 	requireResize();
 }
 
-void Renderer::renderMouseWorld() noexcept {
+void GdiRenderer::renderMouseWorld() noexcept {
 	if (!interactManager.isInWindow()) return;
 	fillWorldBlock(mousePointingAtBlock, mousePointingAtFlash.adaptsColor(0x88ffffff, 0x88ff0000));
 	fillWorld(mousePointingAtWorld - Vector2D(10, 0.02), 20, 0.04, 0xffee0000);
 	fillWorld(mousePointingAtWorld - Vector2D(0.02, 10), 0.04, 20, 0xffee0000);
 }
 
-inline Renderer renderer = Renderer();
+// #define __CARLBEKS_USE_DX__
+#if defined __CARLBEKS_USE_DX__
+#include "dx\direct.h"
+#endif
+
+namespace $LimitedAccess {
+	inline GdiRenderer gdiRenderer = GdiRenderer();
+#if defined __CARLBEKS_USE_DX__
+	inline DirectX12Renderer dxRenderer = DirectX12Renderer();
+#endif
+}
+
+extern IRenderer& renderer = $LimitedAccess::gdiRenderer.postInitialize();

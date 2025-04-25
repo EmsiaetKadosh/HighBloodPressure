@@ -7,7 +7,7 @@
 #include "World.h"
 #include "..\Game.h"
 
-void World::adaptEntityVelocity(Entity& entity) const {
+void World::adaptEntityVelocity(Entity& entity) const noexcept(false) {
 	if (!entity.world) return entity.momentum.velocityTick = game.getTick(), void();
 	if (entity.world != this) return entity.momentum.velocityTick = game.getTick(), void();
 	if (entity.getLocation().getWorld() != idWorld) return entity.momentum.velocityTick = game.getTick(), void();
@@ -57,7 +57,7 @@ void World::adaptEntityVelocity(Entity& entity) const {
 	entity.momentum.velocityTick = game.getTick();
 }
 
-RayTraceResults World::rayTraceBlocks(const Vector2D& startAt, const Vector2D& direction) const {
+RayTraceResults World::rayTraceBlocks(const Vector2D& startAt, const Vector2D& direction) const noexcept(false) {
 	RayTraceResults results;
 	const Vector2D& endPoint = startAt + direction;
 	long xMin, yMin, xMax, yMax;
@@ -134,9 +134,9 @@ RayTraceResults World::rayTraceBlocks(const Vector2D& startAt, const Vector2D& d
 			}
 			// 正叉乘：顺时针转一下（指的是，方块中心到撞击边/角的偏移）
 			// 负叉乘：逆时针转一下（指的是，方块中心到撞击边/角的偏移）
-			const Vector2D fix = (cross > 0 ? CollidingSide::fromVector2D(fourWay).getClockwiseRotated() : CollidingSide::fromVector2D(fourWay).getAntiClockwiseRotated()).getDirectionBlock().multiply(0.5);
+			const Vector2D fix = (cross > 0 ? CollidingSide::fromVector2D(fourWay).getClockwiseRotated() : CollidingSide::fromVector2D(fourWay).getAntiClockwiseRotated()).getDirectionBlock().multiply(0.5); // 修正向量，方块中心->被碰撞的一遍
 			Vector2D ex = fix.getX() == 0 ? direction.clone().extendValueY(block.getY() + fix.getY() - startAt.getY()) : direction.clone().extendValueX(block.getX() + fix.getX() - startAt.getX());
-			if (ex.isZero()) {
+			if (ex.isZero() && false) {
 				Logger.warn(
 					L"Vector2D::extendValue X/Y returned zero Vector2D:"
 					L"\n    startAt: " + startAt.toString() +
@@ -159,7 +159,7 @@ RayTraceResults World::rayTraceBlocks(const Vector2D& startAt, const Vector2D& d
 	return results;
 }
 
-BoundingBoxCollideResults World::boundingBoxCollideBlocks(const BoundingBox& boundingBox, const Location& location, const Vector2D& direction) const {
+BoundingBoxCollideResults World::boundingBoxCollideBlocks(const BoundingBox& boundingBox, const Location& location, const Vector2D& direction) const noexcept(false) {
 	BoundingBoxCollideResults results = BoundingBoxCollideResults();
 	const Vector2D position = location.getPosition();
 	const auto [coverLeft, coverTop, coverRight, coverBottom] = boundingBox.getCoveringBlocks(position);
@@ -276,17 +276,26 @@ BoundingBoxCollideResults World::boundingBoxCollideBlocks(const BoundingBox& bou
 	return results;
 }
 
-void WorldManager::tick() const {
+void WorldManager::tick() const noexcept(false) {
 	if (current) {
 		current->tick();
 		if (interactManager.isInWindow()) {
 			game.getFloatWindow().push(RenderableString(L"\\f\3\\#ffee66dd" + renderer.mousePointingAtBlock.toString()));
 			game.getFloatWindow().push(RenderableString(L"\\f\3\\#ffee0000" + renderer.mousePointingAtWorld.toString()));
+			if (const Block* block = current->getBlockAt(renderer.mousePointingAtBlock)) for (RenderableString& r : block->getDescription()) game.getFloatWindow().push(std::move(r));
 		}
 	}
 	if (!game.getWindow()) {
 		int c = interactManager.dealMouseWheel();
 		if (c < 0) while (c++) interactSettings.actual.mapScale *= 0.96;
 		else if (c > 0) while (c--) interactSettings.actual.mapScale *= 1.05;
+		if (current) {
+			if (interactManager.getKey(VK_RBUTTON).isPressed()) if (Block* block = current->getBlockAt(renderer.mousePointingAtBlock)) current->removeBlockAt(BlockLocation(renderer.mousePointingAtBlock.getPosition(), current->idWorld), WorldTransportReason::Debug), block->onRemove();
+			if (interactManager.getKey(VK_LBUTTON).isPressed())
+				if (!current->getBlockAt(renderer.mousePointingAtBlock)) {
+					if (interactManager.getKey(VK_SHIFT).isPressed()) current->addBlock(TestBarrierBlock::create(renderer.mousePointingAtBlock.ofWorld(current->idWorld)), WorldTransportReason::Debug);
+					else current->addBlock(TimedBarrierBlock::create(renderer.mousePointingAtBlock.ofWorld(current->idWorld)), WorldTransportReason::Debug);
+				}
+		}
 	}
 }

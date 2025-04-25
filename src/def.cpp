@@ -65,4 +65,6 @@ namespace $LimitedAccess {
 		delete &memoryManager;
 		std::wcout << L"^^^^^^^^^^^^^^^^^^^^^^^^^^^^^\n";
 	}
+
+	extern Release gcRelease_LoggerRelease_memoryManagerRelease = Release();
 }

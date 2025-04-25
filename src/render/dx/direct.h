@@ -4,27 +4,31 @@
 
 #pragma once
 
-#include "..\..\def.h"
-
+#include "dxdef.h"
 // #include "pack\pack.h"
-
-#define discard_return(exp) (exp)
-
-template <typename T>
-using ComPtr = Microsoft::WRL::ComPtr<T>;
-
-class [[carlbeks::defineat("renderer.h")]] Renderer;
 
 struct TextureVertex {
 	DirectX::XMFLOAT3 position; // 位置 (R32G32B32_FLOAT)
 	DirectX::PackedVector::XMCOLOR color; // 颜色 (R8G8B8A8_UNORM，需手动归一化)
 	DirectX::XMFLOAT2 uv; // UV坐标 (R32G32_FLOAT，贴图时使用)
 	DirectX::PackedVector::XMSHORT4 normal; // 法线 (R16G16B16A16_SNORM，光照时使用)
+
+	static constexpr D3D12_INPUT_ELEMENT_DESC LAYOUT[] = {
+		{ "POSITION", 0, DXGI_FORMAT_R32G32B32_FLOAT, 0, 0, D3D12_INPUT_CLASSIFICATION_PER_VERTEX_DATA, 0 },
+		{ "COLOR", 0, DXGI_FORMAT_R8G8B8A8_UNORM, 0, 12, D3D12_INPUT_CLASSIFICATION_PER_VERTEX_DATA, 0 },
+		{ "TEXCOORD", 0, DXGI_FORMAT_R32G32_FLOAT, 0, 16, D3D12_INPUT_CLASSIFICATION_PER_VERTEX_DATA, 0 },
+		{ "NORMAL", 0, DXGI_FORMAT_R16G16B16A16_SNORM, 0, 24, D3D12_INPUT_CLASSIFICATION_PER_VERTEX_DATA, 0 }
+	};
 };
 
 struct ColoredVertex {
 	DirectX::XMFLOAT3 position; // 位置 (R32G32B32_FLOAT)
 	DirectX::PackedVector::XMCOLOR color; // 颜色 (R8G8B8A8_UNORM，需手动归一化)
+
+	static constexpr D3D12_INPUT_ELEMENT_DESC LAYOUT[] = {
+		{ "POSITION", 0, DXGI_FORMAT_R32G32B32_FLOAT, 0, 0, D3D12_INPUT_CLASSIFICATION_PER_VERTEX_DATA, 0 },
+		{ "COLOR", 0, DXGI_FORMAT_R8G8B8A8_UNORM, 0, 12, D3D12_INPUT_CLASSIFICATION_PER_VERTEX_DATA, 0 }
+	};
 };
 
 struct ReturnCode {
@@ -67,14 +71,18 @@ struct ReturnCode {
 	}
 } inline directReturns;
 
-class DirectX12Renderer {
-	static constexpr QWORD RenderTargetCount = 2;
+#include "font.h"
+
+class DirectX12Renderer final : public IRenderer {
+	friend class DirectFontManager;
 
 	ComPtr<ID3D12Device4> device = nullptr;
 	ComPtr<IDXGISwapChain3> swapChain = nullptr;
 	ComPtr<ID3D12Fence> fence = nullptr;
 	ComPtr<ID3D12DescriptorHeap> rtvHeap = nullptr; // RTV-heap
-	ComPtr<ID3D12Resource> renderTargets[RenderTargetCount]; // RTV-buffer
+	ComPtr<ID3D12Resource> coloredBuffer[DirectX12Configs::SwapFrameCount]; // RTV-buffer
+	ComPtr<ID3D12Resource> textureBuffer[DirectX12Configs::SwapFrameCount]; // RTV-buffer
+	ComPtr<ID3D12Resource> textBuffer[DirectX12Configs::SwapFrameCount]; // RTV-buffer
 	ComPtr<ID3D12CommandQueue> commandQueue = nullptr; // cmd CQ
 	ComPtr<ID3D12CommandAllocator> commandAllocator = nullptr; // cmd CA
 	ComPtr<ID3D12GraphicsCommandList> commandList = nullptr; // cmd GCL
@@ -101,10 +109,42 @@ public:
 		scissorRect.right = width, scissorRect.bottom = height;
 	}
 
-	inline static void requireSucceeded(HRESULT hr, const String& msg) noexcept(false);
+	~DirectX12Renderer() override {
+		fontManager->finalize();
+		delete fontManager;
+	}
 
+	static void requireSucceeded(const HRESULT hr, const String& msg) noexcept(false) {
+		if (FAILED(hr)) {
+			const Map<QWORD, String>::iterator iter = directReturns.errors.find(hr);
+			if (iter == directReturns.errors.end()) throw RuntimeException(L"Returns " + qwtowb16(hr, 8) + L"; " + msg);
+			throw RuntimeException(iter->second + L"; " + msg);
+		}
+	}
+
+	IRenderer& postInitialize() noexcept override { return initialize(), fontManager = new DirectFontManager(this), *this; }
 	void initialize() noexcept(false);
 	void awaitFrame() noexcept(false);
 	void render() noexcept(false);
 	void cleanup() noexcept(false);
+
+	[[nodiscard]] bool checkResizing() const override;
+	[[nodiscard]] unsigned int changeColorFormat(unsigned argb) const noexcept override;
+	void tick() noexcept(false) override;
+	void finalize(bool isRenderThread) override;
+	void gameStartRender() override;
+	void gameEndRender() override;
+	void requireResize() override;
+	void resize(int width, int height) override;
+	void assertRendering() const override;
+	void assertRenderThread() const override;
+	void resizeStart() override;
+	void resizeShow() const override;
+	void resizeEnd() override;
+	void renderMouseWorld() override;
+	void fill(int x, int y, int w, int h, unsigned color) const override;
+	void fill(const RECT* rect, unsigned color) const override;
+	void fillWorld(const Vector2D& from, const Vector2D& to, unsigned color) const override;
+	void fillWorld(const Vector2D& from, double blockWidth, double blockHeight, unsigned color) const override;
+	void fillWorldBlock(const BlockLocation& from, unsigned color) const override;
 };

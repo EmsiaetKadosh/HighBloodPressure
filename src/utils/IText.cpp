@@ -9,13 +9,13 @@
 
 int RenderableString::getHeight() const noexcept {
 	int height = 0;
-	for (const StringConfig& config : configs) if (const Font& font = fontManager.get(config.idFont); font.getHeight() > height) height = font.getHeight();
+	for (const StringConfig& config : configs) if (const IFonts& font = renderer.getFontManager().get(config.idFont); font.getHeight() > height) height = font.getHeight();
 	return height;
 }
 
 int RenderableString::getWidth(const FontID defaultID) const noexcept {
 	int width = 0;
-	for (const StringConfig& config : configs) width += fontManager.get(config.idFont ? config.idFont : defaultID).getWidth(config);
+	for (const StringConfig& config : configs) width += renderer.getFontManager().get(config.idFont ? config.idFont : defaultID).getWidth(config);
 	return width;
 }
 
@@ -24,7 +24,7 @@ int RenderableString::getWidth(RenderConfig* renderConfigs, const FontID default
 	int i = 0;
 	for (const StringConfig& config : configs) {
 		renderConfigs[i].config = &config;
-		const Font& font = fontManager.get(config.idFont ? config.idFont : defaultID);
+		const IFonts& font = renderer.getFontManager().get(config.idFont ? config.idFont : defaultID);
 		renderConfigs[i].font = &font;
 		width += renderConfigs[i].width = font.getWidth(config);
 		++i;
@@ -32,63 +32,66 @@ int RenderableString::getWidth(RenderConfig* renderConfigs, const FontID default
 	return width;
 }
 
-int Font::drawSingle(const RenderableString::StringConfig& config, const int x, const int y, const unsigned int defaultColor) const {
-	SelectObject(renderer.canvasDC, tryCreate(config));
+int GdiFont::drawSingle(const RenderableString::StringConfig& config, const int x, const int y, const unsigned int defaultColor) const {
+	SelectObject(renderer->canvasDC, tryCreate(config));
 	RECT rect{
 		.left = x,
 		.top = y + yOffsetPx,
 		.right = 0,
 		.bottom = 0
 	};
-	SetTextColor(renderer.canvasDC, config.isDefaultColor() ? defaultColor : Renderer::changeColorFormat(config.color));
-	DrawTextW(renderer.canvasDC, config.text.c_str(), static_cast<int>(config.text.length()), &rect, DT_SINGLELINE | DT_NOCLIP | DT_CALCRECT);
-	if (!config.isDefaultBackground()) renderer.fill(&rect, config.background);
-	DrawTextW(renderer.canvasDC, config.text.c_str(), static_cast<int>(config.text.length()), &rect, DT_SINGLELINE | DT_NOCLIP);
+	SetTextColor(renderer->canvasDC, config.isDefaultColor() ? defaultColor : renderer->changeColorFormat(config.color));
+	DrawTextW(renderer->canvasDC, config.text.c_str(), static_cast<int>(config.text.length()), &rect, DT_SINGLELINE | DT_NOCLIP | DT_CALCRECT);
+	if (!config.isDefaultBackground()) renderer->fill(&rect, config.background);
+	DrawTextW(renderer->canvasDC, config.text.c_str(), static_cast<int>(config.text.length()), &rect, DT_SINGLELINE | DT_NOCLIP);
 	return rect.right;
 }
 
-void Font::drawDirect(const RenderableString::StringConfig& config, const int x, const int y, const unsigned int defaultColor) const {
-	SelectObject(renderer.canvasDC, tryCreate(config));
+GdiFont::GdiFont(IRenderer* renderer, const FontID id, const String& name, const double heightModifier, const double yOffset, const long escapement, const long orientation, const bool adaptAllSize): IFonts(id, name, heightModifier, yOffset, escapement, orientation, adaptAllSize), renderer(assert_dynamic_cast<GdiRenderer*>(renderer)) {}
+GdiFont::GdiFont(IRenderer* renderer, const FontID id, String&& name, const double heightModifier, const double yOffset, const long escapement, const long orientation, const bool adaptAllSize): IFonts(id, std::move(name), heightModifier, yOffset, escapement, orientation, adaptAllSize), renderer(assert_dynamic_cast<GdiRenderer*>(renderer)) {}
+
+void GdiFont::drawDirect(const RenderableString::StringConfig& config, const int x, const int y, const unsigned int defaultColor) const {
+	SelectObject(renderer->canvasDC, tryCreate(config));
 	RECT rect{
 		.left = x,
 		.top = y + yOffsetPx,
 		.right = 0,
 		.bottom = 0
 	};
-	SetTextColor(renderer.canvasDC, config.isDefaultColor() ? defaultColor : Renderer::changeColorFormat(config.color));
-	if (!config.isDefaultBackground()) renderer.fill(&rect, config.background);
-	DrawTextW(renderer.canvasDC, config.text.c_str(), static_cast<int>(config.text.length()), &rect, DT_SINGLELINE | DT_NOCLIP);
+	SetTextColor(renderer->canvasDC, config.isDefaultColor() ? defaultColor : renderer->changeColorFormat(config.color));
+	if (!config.isDefaultBackground()) renderer->fill(&rect, config.background);
+	DrawTextW(renderer->canvasDC, config.text.c_str(), static_cast<int>(config.text.length()), &rect, DT_SINGLELINE | DT_NOCLIP);
 }
 
-void Font::clear() const {
-	for (const auto& [_, fnt] : fonts) renderer.deleteObject(fnt);
+void GdiFont::clear() const {
+	for (const auto& [_, fnt] : fonts) renderer->deleteObject(fnt);
 	fonts.clear();
 }
 
-void Font::draw(const RenderableString& text, int x, const int y, const unsigned int color) const {
-	const COLORREF defaultColor = Renderer::changeColorFormat(color);
+void GdiFont::draw(const RenderableString& text, int x, const int y, const unsigned int color) const {
+	const COLORREF defaultColor = renderer->changeColorFormat(color);
 	for (const RenderableString::StringConfig& config : text.configs) {
 		if (config.idFont) {
-			x = fontManager.get(config.idFont).drawSingle(config, x, y, defaultColor);
+			x = static_cast<GdiFont&>(renderer->fontManager->get(config.idFont)).drawSingle(config, x, y, defaultColor);
 			continue;
 		}
-		SelectObject(renderer.canvasDC, tryCreate(config));
+		SelectObject(renderer->canvasDC, tryCreate(config));
 		RECT rect{
 			.left = x,
 			.top = y + yOffsetPx,
 			.right = 0,
 			.bottom = 0
 		};
-		SetTextColor(renderer.canvasDC, config.isDefaultColor() ? defaultColor : Renderer::changeColorFormat(config.color));
-		DrawTextW(renderer.canvasDC, config.text.c_str(), static_cast<int>(config.text.length()), &rect, DT_SINGLELINE | DT_NOCLIP | DT_CALCRECT);
-		if (!config.isDefaultBackground()) renderer.fill(&rect, config.background);
+		SetTextColor(renderer->canvasDC, config.isDefaultColor() ? defaultColor : renderer->changeColorFormat(config.color));
+		DrawTextW(renderer->canvasDC, config.text.c_str(), static_cast<int>(config.text.length()), &rect, DT_SINGLELINE | DT_NOCLIP | DT_CALCRECT);
+		if (!config.isDefaultBackground()) renderer->fill(&rect, config.background);
 		x = rect.right;
-		DrawTextW(renderer.canvasDC, config.text.c_str(), static_cast<int>(config.text.length()), &rect, DT_SINGLELINE | DT_NOCLIP);
+		DrawTextW(renderer->canvasDC, config.text.c_str(), static_cast<int>(config.text.length()), &rect, DT_SINGLELINE | DT_NOCLIP);
 	}
 }
 
-void Font::drawCenter(const RenderableString& text, int x, int y, const int w, const int h, const unsigned int color) const {
-	const COLORREF defaultColor = Renderer::changeColorFormat(color);
+void GdiFont::drawCenter(const RenderableString& text, int x, int y, const int w, const int h, const unsigned int color) const {
+	const COLORREF defaultColor = renderer->changeColorFormat(color);
 	using RenderConfig = RenderableString::RenderConfig;
 	const QWORD size = text.configs.size();
 	RenderConfig* configs = allocatedFor(new RenderConfig[size], sizeof(RenderConfig) * size);
@@ -96,17 +99,17 @@ void Font::drawCenter(const RenderableString& text, int x, int y, const int w, c
 	x += w - stringWidth >> 1;
 	y += h - text.getHeight() >> 1;
 	for (QWORD i = 0; i < size; ++i) {
-		configs[i].font->drawDirect(*configs[i].config, x, y, defaultColor);
+		static_cast<const GdiFont*>(configs[i].font)->drawDirect(*configs[i].config, x, y, defaultColor);
 		x += configs[i].width;
 	}
 	delete[] deallocating(configs);
 }
 
-int Font::getWidth(const RenderableString::StringConfig& config) const {
-	HFONT const font = tryCreate(config);
+int GdiFont::getWidth(const RenderableString::StringConfig& config) const {
+	const HFONT font = tryCreate(config);
 	RECT rect{};
-	SelectObject(renderer.assistDC, font);
-	DrawTextW(renderer.assistDC, config.text.c_str(), static_cast<int>(config.text.length()), &rect, DT_CALCRECT | DT_NOCLIP | DT_SINGLELINE);
+	SelectObject(renderer->assistDC, font);
+	DrawTextW(renderer->assistDC, config.text.c_str(), static_cast<int>(config.text.length()), &rect, DT_CALCRECT | DT_NOCLIP | DT_SINGLELINE);
 	return rect.right;
 }
 
@@ -149,4 +152,3 @@ void languageMakeChinese(Language& lang) {
 }
 
 inline Translator translator = Translator();
-inline FontManager fontManager = FontManager();

@@ -6,6 +6,8 @@ add_definitions(-D_UNICODE)
 add_definitions(-D__CARLBEKS_CMAKE_VSCODE__)
 set(CMAKE_CXX_STANDARD 26)
 set(CMAKE_WIN32_EXECUTABLE true)
+set(CMAKE_BUILD_TYPE Debug)
+
 if (CMAKE_CXX_COMPILER_ID STREQUAL "Clang")
     add_compile_options(${PROJECT_NAME} -Wno-microsoft-string-literal-from-predefined)
 endif ()
@@ -39,9 +41,11 @@ add_executable(${PROJECT_NAME}
         src/game/Game.cpp
 
         src/game/entity/Entity.cpp
+        src/game/world/Block.cpp
         src/game/world/World.cpp
         src/game/entity/Player.cpp
 
+        src/render/dx/font.cpp
         src/render/dx/direct.cpp
 )
 set(CPACK_PROJECT_NAME ${PROJECT_NAME})

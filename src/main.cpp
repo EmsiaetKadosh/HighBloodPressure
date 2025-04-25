@@ -356,13 +356,7 @@ void renderThread() {
 LRESULT __stdcall WndProc(const HWND hwnd, const UINT uMsg, const WPARAM wParam, const LPARAM lParam) {
 	switch (uMsg) {
 			[[likely]]
-		case WM_PAINT: {
-			PAINTSTRUCT ps;
-			BeginPaint(hwnd, &ps);
-			if (renderer.checkResizing()) renderer.resizeShow();
-			EndPaint(hwnd, &ps);
-			break;
-		}
+		case WM_PAINT: return Logger.trace(L"WM_PAINT"), ValidateRect(hwnd, nullptr), 0;
 			[[likely]]
 		case WM_NCHITTEST: {
 			POINT point = { GET_X_LPARAM(lParam), (GET_Y_LPARAM(lParam)) };
@@ -511,12 +505,13 @@ LRESULT __stdcall WndProc(const HWND hwnd, const UINT uMsg, const WPARAM wParam,
 			interactSettings.setScreenScale(static_cast<double>(GetSystemMetrics(SM_CYSCREEN)) / 2160.);
 			break;
 		case WM_APP_REQUESTHDC: {
-			if (renderer.MainDC) DeleteDC(renderer.MainDC);
-			renderer.MainDC = GetDC(MainWindowHandle);
-			Logger.info(L"Get new DC: " + std::to_wstring(reinterpret_cast<QWORD>(renderer.MainDC)));
-			if (!renderer.MainDC) Logger.error(L"WM_APP_REQUESTHDC failed to initialize HDC. LastError: " + std::to_wstring(GetLastError()));
-			else SetBkMode(renderer.MainDC, TRANSPARENT);
-			renderer.refreshedHDC = 1;
+			GdiRenderer& gdiRenderer = dynamic_cast<GdiRenderer&>(renderer);
+			if (gdiRenderer.MainDC) DeleteDC(gdiRenderer.MainDC);
+			gdiRenderer.MainDC = GetDC(MainWindowHandle);
+			Logger.info(L"Get new DC: " + std::to_wstring(reinterpret_cast<QWORD>(gdiRenderer.MainDC)));
+			if (!gdiRenderer.MainDC) Logger.error(L"WM_APP_REQUESTHDC failed to initialize HDC. LastError: " + std::to_wstring(GetLastError()));
+			else SetBkMode(gdiRenderer.MainDC, TRANSPARENT);
+			gdiRenderer.refreshedHDC = 1;
 			break;
 		}
 			[[unlikely]]
@@ -637,7 +632,6 @@ int __stdcall wWinMain(const HINSTANCE hInstance, const HINSTANCE, [[maybe_unuse
 	Logger.info(L"Thread terminated");
 	if (!UnhookWindowsHookEx(hook)) Logger.error(L"Failed to UnhookWindowsHookEx. LastError:" + std::to_wstring(GetLastError()));
 	if (!UnregisterClassW(wc.lpszClassName, wc.hInstance)) Logger.error(L"Failed to UnregisterClassW. LastError:" + std::to_wstring(GetLastError()));
-	fontManager.finalize();
 	renderer.finalize(false);
 	return ret;
 }

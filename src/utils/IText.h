@@ -4,24 +4,27 @@
 
 #pragma once
 
-
 #include "..\def.h"
 #include "Chars.h"
 #include "exception.h"
 #include "..\interact\InteractManager.h"
 
+class [[carlbeks::predecl, carlbeks::defineat("renderer.h")]] IRenderer;
+class [[carlbeks::predecl, carlbeks::defineat("renderer.h")]] GdiRenderer;
 class LiteralText;
 class Translator;
-// class Font;
-class FontManager;
+class GdiFontManager;
 
 using FontStyle = int;
 using FontID = unsigned short;
 
 class RenderableString {
 	friend class LiteralText;
-	friend class Font;
+	friend class IFonts;
+	friend class GdiFont;
+	friend class DirectFont;
 
+public:
 	struct StringConfig {
 		String text;
 		unsigned int color = -1;
@@ -83,9 +86,9 @@ class RenderableString {
 		[[nodiscard]] String toString() const noexcept {
 			String ret;
 			ret.append(L"#");
-			ret.append(isDefaultColor() ? L"~~" : uitowb16(color));
+			ret.append(isDefaultColor() ? L"~~" : qwtowb16(color, 8));
 			ret.append(L".");
-			ret.append(isDefaultBackground() ? L"~~" : uitowb16(background));
+			ret.append(isDefaultBackground() ? L"~~" : qwtowb16(background, 8));
 			ret.append(L",F");
 			ret.append(std::to_wstring(idFont));
 			ret.append(L",");
@@ -100,11 +103,12 @@ class RenderableString {
 	};
 
 	struct RenderConfig {
-		const Font* font;
+		const IFonts* font;
 		const StringConfig* config;
 		int width;
 	};
 
+private:
 	List<StringConfig> configs;
 	using Iterator = List<StringConfig>::iterator;
 	using ConstIterator = List<StringConfig>::const_iterator;
@@ -359,15 +363,11 @@ private:
 
 inline RenderableString operator""_renderable(const wchar* const text, const QWORD length) noexcept { return RenderableString(String(text, length)); }
 
-class Font {
-public:
-	Function<void(int width, int height)> resize;
-
-private:
-	friend class FontManager;
+class IFonts {
+protected:
 	friend class RenderableString;
+
 	const String name;
-	mutable Map<FontStyle, HFONT> fonts{};
 	double yOffset;
 	double heightModifier;
 	long height;
@@ -377,20 +377,25 @@ private:
 	const FontID id;
 	bool adaptAllSize = false;
 
-	Font(const FontID id, const String& name, const double heightModifier, const double yOffset, const long escapement, const long orientation, const bool adaptAllSize) : name{name}, yOffset(yOffset), heightModifier(heightModifier), height(static_cast<long>(interactSettings.actual.fontHeight * heightModifier)), escapement(escapement), orientation(orientation), yOffsetPx(static_cast<long>(yOffset * height)), id(id), adaptAllSize(adaptAllSize) {}
+	IFonts(const FontID id, const String& name, const double heightModifier, const double yOffset, const long escapement, const long orientation, const bool adaptAllSize) : name{name}, yOffset(yOffset), heightModifier(heightModifier), height(static_cast<long>(interactSettings.actual.fontHeight * heightModifier)), escapement(escapement), orientation(orientation), yOffsetPx(static_cast<long>(yOffset * height)), id(id), adaptAllSize(adaptAllSize) {}
+	IFonts(const FontID id, String&& name, const double heightModifier, const double yOffset, const long escapement, const long orientation, const bool adaptAllSize) : name{std::move(name)}, yOffset(yOffset), heightModifier(heightModifier), height(static_cast<long>(interactSettings.actual.fontHeight * heightModifier)), escapement(escapement), orientation(orientation), yOffsetPx(static_cast<long>(yOffset * height)), id(id), adaptAllSize(adaptAllSize) {}
 
-	Font(const FontID id, String&& name, const double heightModifier, const double yOffset, const long escapement, const long orientation, const bool adaptAllSize) : name{std::move(name)}, yOffset(yOffset), heightModifier(heightModifier), height(static_cast<long>(interactSettings.actual.fontHeight * heightModifier)), escapement(escapement), orientation(orientation), yOffsetPx(static_cast<long>(yOffset * height)), id(id), adaptAllSize(adaptAllSize) {}
+	[[nodiscard]] virtual int getWidth(const RenderableString::StringConfig& config) const = 0;
 
 public:
-	Font(const Font&) = default;
-	Font(Font&&) = default;
-	~Font() {
-		// 此处Font的回收已经到结束阶段，GDI应该已经收回了资源，不能在手动释放了
-		if (!fonts.empty()) Logger.warn(L"Font is not successfully cleared when ~Font() called: " + name);
-	}
+	IFonts(const IFonts&) = default;
+	IFonts(IFonts&&) = default;
+	virtual ~IFonts() = default;
+	virtual void draw(const RenderableString& text, int x, int y, unsigned int color = 0xffeeeeee) const = 0;
+	virtual void drawCenter(const RenderableString& text, int x, int y, int w, int h, unsigned int color = 0xffeeeeee) const = 0;
+	[[nodiscard]] int getHeight() const noexcept { return height; }
+	[[nodiscard]] int getEscapement() const noexcept { return escapement; }
+	[[nodiscard]] int getOrientation() const noexcept { return orientation; }
+	[[nodiscard]] FontID getID() const noexcept { return id; }
+};
 
-private:
-	HFONT tryCreate(const RenderableString::StringConfig& config) const {
+class GdiFont final : public IFonts {
+	[[nodiscard]] HFONT tryCreate(const RenderableString::StringConfig& config) const {
 		if (const auto iter = fonts.find(config.style); iter != fonts.end()) return iter->second;
 		LOGFONTW f{
 			.lfHeight = height,
@@ -414,32 +419,67 @@ private:
 		return fnt;
 	}
 
-	int getWidth(const RenderableString::StringConfig& config) const;
-	int drawSingle(const RenderableString::StringConfig& config, int x, int y, unsigned int defaultColor) const;
-	void drawDirect(const RenderableString::StringConfig& config, int x, int y, unsigned int defaultColor) const;
+protected:
 
+	[[nodiscard]] int getWidth(const RenderableString::StringConfig& config) const override;
+	[[nodiscard]] int drawSingle(const RenderableString::StringConfig& config, int x, int y, unsigned int defaultColor) const;
+	void drawDirect(const RenderableString::StringConfig& config, int x, int y, unsigned int defaultColor) const;
 	void clear() const;
+	friend class GdiFontManager;
+	friend class RenderableString;
+	mutable Map<FontStyle, HFONT> fonts{};
+	GdiRenderer* renderer = nullptr;
+
+	GdiFont(IRenderer*, FontID, const String& name, double heightModifier, double yOffset, long escapement, long orientation, bool adaptAllSize);
+
+	GdiFont(IRenderer*, FontID, String&& name, double heightModifier, double yOffset, long escapement, long orientation, bool adaptAllSize);
 
 public:
-	void draw(const RenderableString& text, int x, int y, unsigned int color = 0xffeeeeee) const;
-	void drawCenter(const RenderableString& text, int x, int y, int w, int h, unsigned int color = 0xffeeeeee) const;
+	Function<void(int width, int height)> resize;
 
-	[[nodiscard]] int getHeight() const noexcept { return height; }
-	[[nodiscard]] int getEscapement() const noexcept { return escapement; }
-	[[nodiscard]] int getOrientation() const noexcept { return orientation; }
-	[[nodiscard]] FontID getID() const noexcept { return id; }
+	~GdiFont() override {
+		// 此处Font的回收已经到结束阶段，GDI应该已经收回了资源，不能在手动释放了
+		if (!fonts.empty()) Logger.warn(L"Font is not successfully cleared when ~Font() called: " + name);
+	}
+
+	void draw(const RenderableString& text, int x, int y, unsigned int color = 0xffeeeeee) const override;
+	void drawCenter(const RenderableString& text, int x, int y, int w, int h, unsigned int color = 0xffeeeeee) const override;
 };
 
-class FontManager {
-	Map<FontID, Font> fonts;
-	Font *defaultFont, *captionFont;
-	FontID assigned = 0;
-	using IterFonts = Map<FontID, Font>::const_iterator;
+class IFontManager {
+	friend class IRenderer;
+
+protected:
+	IRenderer* renderer;
 
 public:
-	FontManager() {
-		captionFont = &newFont(L"Microsoft YaHei UI Light");
-		defaultFont = &newFont(L"Microsoft YaHei UI Light");
+	IFontManager(IRenderer* const renderer) : renderer(renderer) {}
+	IFontManager(const IFontManager&) = delete;
+	IFontManager(IFontManager&&) = delete;
+	IFontManager& operator=(const IFontManager&) = delete;
+	IFontManager& operator=(IFontManager&&) = delete;
+	virtual ~IFontManager() = default;
+
+	virtual void finalize() = 0;
+	virtual void resize(int width, int height) = 0;
+	virtual IFonts& newFont(const String& name, double heightModifier, double yOffset, bool adaptAllSize, long escapement, long orientation) = 0;
+	virtual IFonts& newFont(String&& name, double heightModifier, double yOffset, bool adaptAllSize, long escapement, long orientation) = 0;
+	[[nodiscard]] virtual IFonts& getDefault() const = 0;
+	[[nodiscard]] virtual IFonts& get(FontID id) const = 0;
+};
+
+class GdiFontManager final : public IFontManager {
+	friend class GdiFont;
+	Map<FontID, GdiFont> fonts;
+	GdiFont* defaultFont;
+	GdiFont* captionFont;
+	FontID assigned = 0;
+	using IterFonts = Map<FontID, GdiFont>::const_iterator;
+
+public:
+	GdiFontManager(IRenderer* const renderer) : IFontManager(renderer) {
+		captionFont = &GdiFontManager::newFont(L"Microsoft YaHei UI Light");
+		defaultFont = &GdiFontManager::newFont(L"Microsoft YaHei UI Light");
 		captionFont->height = interactSettings.actual.captionHeight >> 1;
 		captionFont->resize = [this](int, int) {
 			if (interactSettings.actual.captionHeight != captionFont->height) {
@@ -447,33 +487,33 @@ public:
 				captionFont->clear();
 			}
 		};
-		newFont(L"Jetbrains Mono", 1.0, -0.078);
-		newFont(L"STSong", 1.0, -0.12);
-		newFont(L"Arial", 1.0, -0.13);
-		newFont(L"", 1.0, -0.05);
+		GdiFontManager::newFont(L"Jetbrains Mono", 1.0, -0.078);
+		GdiFontManager::newFont(L"STSong", 1.0, -0.12);
+		GdiFontManager::newFont(L"Arial", 1.0, -0.13);
+		GdiFontManager::newFont(L"", 1.0, -0.05);
 	}
 
-	void finalize() { for (auto& [id, font] : fonts) font.clear(); }
+	void finalize() override { for (auto& [id, font] : fonts) font.clear(); }
 
-	[[nodiscard]] const Font& get(const FontID id) const noexcept {
+	[[nodiscard]] GdiFont& get(const FontID id) const noexcept override {
 		const IterFonts iter = fonts.find(id);
 		if (iter == fonts.cend()) return *defaultFont;
-		return iter->second;
+		return const_cast<GdiFont&>(iter->second);
 	}
 
-	const Font& newFont(const String& name, const double heightModifier = 1.0, const double yOffset = 0.0, const bool adaptAllSize = true, const long escapement = 0, const long orientation = 0) noexcept {
+	GdiFont& newFont(const String& name, const double heightModifier = 1.0, const double yOffset = 0.0, const bool adaptAllSize = true, const long escapement = 0, const long orientation = 0) noexcept override {
 		++assigned;
-		return fonts.emplace(assigned, std::move(Font(assigned, name, heightModifier, yOffset, adaptAllSize, escapement, orientation))).first->second;
+		return fonts.emplace(assigned, std::move(GdiFont(renderer, assigned, name, heightModifier, yOffset, adaptAllSize, escapement, orientation))).first->second;
 	}
 
-	Font& newFont(String&& name, const double heightModifier = 1.0, const double yOffset = 0.0, const bool adaptAllSize = true, const long escapement = 0, const long orientation = 0) {
+	GdiFont& newFont(String&& name, const double heightModifier = 1.0, const double yOffset = 0.0, const bool adaptAllSize = true, const long escapement = 0, const long orientation = 0) override {
 		++assigned;
-		return fonts.emplace(assigned, std::move(Font(assigned, std::move(name), heightModifier, yOffset, adaptAllSize, escapement, orientation))).first->second;
+		return fonts.emplace(assigned, std::move(GdiFont(renderer, assigned, std::move(name), heightModifier, yOffset, adaptAllSize, escapement, orientation))).first->second;
 	}
 
-	[[nodiscard]] Font& getDefault() const noexcept { return *defaultFont; }
+	[[nodiscard]] GdiFont& getDefault() const noexcept override { return *defaultFont; }
 
-	void resize(const int width, const int height) {
+	void resize(const int width, const int height) override {
 		for (auto& [_, font] : fonts)
 			if (font.resize) font.resize(width, height);
 			else {
@@ -497,10 +537,8 @@ typedef class LiteralText final : public IText {
 public:
 	LiteralText(const String& string): string(string), renderableString(string) {}
 	LiteralText(String&& string): string(std::move(string)), renderableString(this->string) {}
-
-	const String& getText() const noexcept override { return string; }
-
-	const RenderableString& getRenderableString() const noexcept override { return renderableString; }
+	[[nodiscard]] const String& getText() const noexcept override { return string; }
+	[[nodiscard]] const RenderableString& getRenderableString() const noexcept override { return renderableString; }
 } TranslatedText;
 
 inline LiteralText operator""_literal(const wchar* const text, const QWORD length) noexcept { return LiteralText(String(text, length)); }
@@ -602,4 +640,3 @@ public:
 };
 
 extern Translator translator;
-extern FontManager fontManager;
