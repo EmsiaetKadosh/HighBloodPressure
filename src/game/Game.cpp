@@ -37,7 +37,12 @@ Game::~Game() {
 }
 
 void Game::render(const double tickDelta, const QWORD tickRendering) const noexcept {
-	if (renderer.checkResizing()) return;
+	static unsigned int logCount;
+	if (renderer.checkResizing()) {
+		if (!--logCount) logCount = 30, Logger.trace(L"waiting for resize");
+		return;
+	}
+	if (logCount != 30) logCount = 30, Logger.trace(L"render (resize completed)");
 	renderer.getCamera().render(tickDelta, tickRendering);
 	renderer.gameStartRender();
 	if (worldManager->current) {
@@ -61,7 +66,6 @@ void Game::tick() noexcept(false) {
 	caption->tick();
 	hud.tick();
 	windows.tick();
-	floatWindow->update();
 	tasks.runAll();
 	gc.collect();
 }

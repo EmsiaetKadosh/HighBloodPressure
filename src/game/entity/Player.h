@@ -6,11 +6,12 @@
 
 #include "..\Game.h"
 #include "Entity.h"
+#include "..\world\World.h"
 
 /**
  * 《高血压》玩家设计
  * 血压条初始上限100，可因其他因素而增加减少。上限变化时，值保持与上限的比例不变。
- * 上限20%以下时为低血压状态，80%以上时为高血压状态。
+ * 上限20%以下时为低血压状态，80%以上时为高血压状态。分别称为低临界和高临界
  * 【被】【固】：血压越高，玩家移动速度、伤害越高，跳跃能力越好。反则反之。
  * 【被】【固】：高血压时，玩家血压越高，受持续高血压伤害越高；低血压时，玩家血压越低，受持续低血压伤害越高。
  * 【被】浴血奋战：玩家受伤时，血压会升高，血压伤害不会导致血压变化。
@@ -27,34 +28,76 @@
  * 【被】背水一战：血量越低，血压自然降低速度越慢，高血压伤害越低，低血压伤害越高。
  * 【主】背水一战：伤害+50%、受伤+20%、攻击附带10%吸血，若持续0.6s没有打出过伤害，取消【被】背水一战（若有），【被】【固】的高血压伤害翻倍。清除周围的怪物后，该效果解除。
  * 【被】猪突猛进：血压50%以上时，若处于奔跑状态不少于0.5s，下一次闪避附带冲撞、眩晕，按命中和伤害升高血压。
- * 【主】猪突猛进：血压50%以上时，主动启动猪突猛进，在下一次闪避之前，取消【被】静如止水，改为按血压值额外增加奔跑速度，奔跑时少量消耗血压，不奔跑时快速增加血压
+ * 【主】猪突猛进：血压50%以上时，主动启动猪突猛进，在下一次闪避之前，取消【被】静如止水，改为按血压值额外增加奔跑速度，奔跑时少量消耗血压，不奔跑时快速增加血压。
+ *
+ * 【诅咒】涣屠：玩家血压升高0的速度、高血压伤害急剧升高，每杀死一个敌人后，回复所有体力并清空血压至低临界。
+ * 【诅咒】血浴：玩家必须持续受到伤害；伤害至0不会导致死亡；玩家回复体力的速度急剧升高，体力回复至满时死亡。
 */
 class Player final : public Entity {
-	char airJump = 1;
+	KeyBinding& left;
+	KeyBinding& right;
+	KeyBinding& jump;
+	KeyBinding& dodge;
+	char airJump = 1; // 多段跳计数
+	char jumpInterval = 0; // 跳跃时间间隔
+	char dodgeInterval = 10;
+	char dodgeDirection = 0;
 
-	Player(const Vector2D& location) : Entity(location) {
+	Player(KeyRegion& kr, const Vector2D& location) : Entity(location), left(*kr.getBinding(L"move_left")), right(*kr.getBinding(L"move_right")), jump(*kr.getBinding(L"move_jump")), dodge(*kr.getBinding(L"move_dodge")) {}
+
+	Player(const Vector2D& location) : Player(interactManager.getKeyBindingManager().getRegion(L"world"), location) {
 		boundingBox.setLeft(0.6);
 		boundingBox.setRight(0.6);
 		boundingBox.setTop(2.5);
 		maxSpeed = 0.3;
 	}
 
+	void processKey() {
+		if (jump.isPressed()) {
+			if (jumpInterval) --jumpInterval;
+			else if (!game.options.autoJumpHighest || velocity.getY() >= 0 || jump.wasPressedThenDeal()) { // 这里是一个自动高跳的判断
+				if (isOnGround()) accelerate.setY(-0.4);
+				else if (airJump == 2) velocity.setY(-0.25), accelerate.setY(0), --airJump;
+				else if (airJump == 1) {
+					--airJump, velocity.setY(-0.4), accelerate.setY(0);
+					if (left.isPressedThenDeal()) velocity.setX(nMin(-maxSpeed, velocity.getX()));
+					if (right.isPressedThenDeal()) velocity.setX(nMax(+maxSpeed, velocity.getX()));
+				}
+				jumpInterval = 3;
+			}
+			jump.deals(); // 此处延迟deal。因为在此if内部，有一行jump.wasPressedThenDeal()，不能在开始时就isPressedThenDeal()
+		}
+		if (left.isPressedThenDeal()) accelerate.add(-0.02, 0);
+		if (right.isPressedThenDeal()) accelerate.add(0.02, 0);
+		if (accelerate.getX() != 0) accelerate.setX(nRange(accelerate.getX(), (-maxSpeed - velocity.getX()) * 0.2, (maxSpeed - velocity.getX()) * 0.2));
+		jump.deals();
+	}
+
 public:
 	void tick() noexcept(false) override {
 		updatePosition();
 		accelerate = Vector2D();
-		if (interactManager.getKey(VK_SPACE).wasPressedAndDeal()) {
-			if (isOnGround()) accelerate.setY(-0.4);
-			else if (airJump == 2) velocity.setY(-0.25), accelerate.setY(0), --airJump;
-			else if (airJump == 1) {
-				--airJump, velocity.setY(-0.4), accelerate.setY(0);
-				if (interactManager.getKey('A').isPressed()) velocity.setX(nMin(-0.35, velocity.getX()));
-				if (interactManager.getKey('D').isPressed()) velocity.setX(nMax(0.35, velocity.getX()));
+		bool shouldProcessKeys = true;
+		if (dodgeInterval > 0) --dodgeInterval;
+		else if (dodgeInterval < 0) {
+			shouldProcessKeys = false;
+			if (dodgeDirection == 0) Logger.warn(L"DodgeDirection = 0");
+			else velocity.setX(dodgeDirection * maxSpeed * 1.5);
+			Logger.debug(L"Dodging");
+			++dodgeInterval;
+		}
+		else if (dodge.isPressedThenDeal()) {
+			dodgeDirection = 0;
+			if (left.isPressedThenDeal()) --dodgeDirection;
+			if (right.isPressedThenDeal()) ++dodgeDirection;
+			if (dodgeDirection) dodgeInterval = -8;
+			else { // 按键无法决定方向
+				if (velocity.getX() < 0) dodgeDirection = -1;
+				if (velocity.getX() > 0) dodgeDirection = 1;
+				if (dodgeDirection) dodgeInterval = -8;
 			}
 		}
-		if (interactManager.getKey('A').isPressed()) accelerate.add(-0.02, 0);
-		if (interactManager.getKey('D').isPressed()) accelerate.add(0.02, 0);
-		if (accelerate.getX() != 0) accelerate.setX(nRange(accelerate.getX(), (-maxSpeed - velocity.getX()) * 0.2, (maxSpeed - velocity.getX()) * 0.2));
+		if (shouldProcessKeys) processKey();
 		Entity::tick();
 	}
 
@@ -65,11 +108,11 @@ public:
 
 	void render(const double tickDelta, const QWORD tickRendering) const noexcept override {
 		if (renderer.getCamera().getRenderingTargetEntity() == this) {
-			renderer.fillWorld(renderer.getCamera().getTargetPosition().add(boundingBox.getLeftTopOffset()), boundingBox.getWidth(), boundingBox.getHeight(), airJump == 2? 0xff44ee66 : airJump == 1 ? 0xffeeee66 : 0xffdd7755);
+			renderer.fillWorld(renderer.getCamera().getTargetPosition().add(boundingBox.getLeftTopOffset()), boundingBox.getWidth(), boundingBox.getHeight(), airJump == 2 ? 0xff44ee66 : airJump == 1 ? 0xffeeee66 : 0xffdd7755);
 			return;
 		}
 		momentum.atomicAcquire();
-		renderer.fillWorld(getLocation(tickDelta, tickRendering).getPosition().add(boundingBox.getLeftTopOffset()), boundingBox.getWidth(), boundingBox.getHeight(), airJump == 2? 0xff44ee66 : airJump == 1 ? 0xffeeee66 : 0xffdd7755);
+		renderer.fillWorld(getLocation(tickDelta, tickRendering).getPosition().add(boundingBox.getLeftTopOffset()), boundingBox.getWidth(), boundingBox.getHeight(), airJump == 2 ? 0xff44ee66 : airJump == 1 ? 0xffeeee66 : 0xffdd7755);
 		momentum.atomicRelease();
 	}
 

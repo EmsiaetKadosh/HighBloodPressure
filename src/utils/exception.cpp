@@ -10,12 +10,9 @@
 #include "..\game\Game.h"
 #include "..\hbp.h"
 
-static AtomicStorage outStreamLock;
+static AtomicStorage outStreamLock = false;
 
-String PublicLogger::build(const String& msg, const String& type) const {
-	return L"T-" + qwtowb10(game.getTick(), 8) + name + type + qwtowb10(std::this_thread::get_id()._Get_underlying_id(), 6) + L" " + msg + L"\n";
-}
-
+String PublicLogger::build(const String& msg, const String& type) const { return L"T-" + qwtowb10(game.getTick(), 8) + name + type + qwtowb10(std::this_thread::get_id()._Get_underlying_id(), 6) + L" " + msg + L"\n"; }
 void PublicLogger::atomicAcquire() noexcept { outStreamLock.atomicAcquire(); }
 void PublicLogger::atomicRelease() noexcept { outStreamLock.atomicRelease(); }
 

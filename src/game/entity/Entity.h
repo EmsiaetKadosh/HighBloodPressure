@@ -298,6 +298,7 @@ public:
 	[[nodiscard]] double getMaxSpeed() const noexcept { return this->maxSpeed; }
 	[[nodiscard]] RECT getCoveringBlocks() const noexcept { return boundingBox.getCoveringBlocks(momentum.location.getPosition()); }
 	[[nodiscard]] EntityMomentum& getMomentum() noexcept { return this->momentum; }
+	[[nodiscard]] World* getWorld() const noexcept { return world; }
 	[[nodiscard]] bool isOnGround() const noexcept { return onGround; }
 
 	/**

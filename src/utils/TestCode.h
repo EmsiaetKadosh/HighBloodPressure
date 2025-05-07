@@ -4,4 +4,7 @@
 
 #pragma once
 
+#include "def.h"
+
+
 inline void test() {}

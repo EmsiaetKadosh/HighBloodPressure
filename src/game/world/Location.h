@@ -89,8 +89,9 @@ public:
 	[[nodiscard]] bool isBlockReason() const noexcept { return reason->isBlockReason; }
 	[[nodiscard]] bool isEntityReason() const noexcept { return reason->isEntityReason; }
 
-	static WorldTransportReason registerReason(const String& description, const bool isBlockReason, const bool isEntityReason) { return *manager.create(description, isBlockReason, isEntityReason); }
-	static WorldTransportReason registerReason(String&& description, const bool isBlockReason, const bool isEntityReason) { return *manager.create(std::move(description), isBlockReason, isEntityReason); }
+	[[nodiscard]] static WorldTransportReason registerReason(const String& description, const bool isBlockReason, const bool isEntityReason) { return *manager.create(description, isBlockReason, isEntityReason); }
+	[[nodiscard]] static WorldTransportReason registerReason(String&& description, const bool isBlockReason, const bool isEntityReason) { return *manager.create(std::move(description), isBlockReason, isEntityReason); }
+	[[nodiscard]] String toString() const noexcept { return reason->description; }
 };
 
 class [[carlbeks::TriviallyCopyable]] Location {

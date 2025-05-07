@@ -185,7 +185,7 @@ public:
 		return *this;
 	}
 
-	[[nodiscard]] String toString() const noexcept { return L"(" + std::to_wstring(x) + L", " + std::to_wstring(y) + L", " + std::to_wstring(z) + L")"; }
+	[[nodiscard]] String toString() const noexcept { return L"Vector2D: (" + std::to_wstring(x) + L", " + std::to_wstring(y) + L", " + std::to_wstring(z) + L")"; }
 };
 
 class [[carlbeks::TriviallyCopyable]] Vector2D {
@@ -301,7 +301,7 @@ public:
 		return *this;
 	}
 
-	[[nodiscard]] String toString() const noexcept { return L"(" + dtoString(x) + L", " + dtoString(y) + L")"; }
+	[[nodiscard]] String toString(const bool simplify = false) const noexcept { return simplify ? L"Vector3D: (" + std::to_wstring(x) + L", " + std::to_wstring(y) + L")" : L"Vector3D: (" + dtoString(x) + L", " + dtoString(y) + L")"; }
 };
 
 class Vector4D final {
@@ -366,7 +366,7 @@ public:
 		return *this;
 	}
 
-	[[nodiscard]] String toString() const noexcept { return L"(" + std::to_wstring(x) + L", " + std::to_wstring(y) + L", " + std::to_wstring(z) + L", " + std::to_wstring(w) + L")"; }
+	[[nodiscard]] String toString() const noexcept { return L"Vector4D: (" + std::to_wstring(x) + L", " + std::to_wstring(y) + L", " + std::to_wstring(z) + L", " + std::to_wstring(w) + L")"; }
 };
 
 inline Vector2D operator*(const double scalar, const Vector2D& vector) noexcept { return vector * scalar; }

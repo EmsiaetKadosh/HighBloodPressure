@@ -6,6 +6,58 @@
 
 #include "..\ui\Window.h"
 
+void KeyBindingClass::deals() const noexcept {
+	for (const auto& i : keyCode)
+		if (i) interactManager.getKey(i).deals();
+		else return;
+}
+
+bool KeyBindingClass::isPressed() const noexcept {
+	for (const auto& i : keyCode) {
+		if (!i) return true;
+		if (!interactManager.getKey(i).isPressed()) return false;
+	}
+	return true;
+}
+
+bool KeyBindingClass::isPressedThenDeal() const noexcept {
+	for (const auto& i : keyCode) {
+		if (!i) break;
+		if (!interactManager.getKey(i).isPressed()) return false;
+	}
+	deals();
+	return true;
+}
+
+unsigned int KeyBindingClass::boundKeyCount() const noexcept {
+	unsigned int ret = 0;
+	while (keyCode[ret] && ret < 8) ++ret;
+	return ret;
+}
+
+unsigned int KeyBindingClass::wasPressed() const noexcept {
+	unsigned int min = 0, t = 0;
+	for (const auto& i : keyCode) {
+		if (!i) return min;
+		if (t = interactManager.getKey(i).wasPressed(); !t) return 0;
+		if (min == 0 || t < min) min = t;
+	}
+	return min;
+}
+
+unsigned int KeyBindingClass::wasPressedThenDeal() const noexcept {
+	unsigned int min = 0, t = 0;
+	for (const auto& i : keyCode) {
+		if (!i) break;
+		if (t = interactManager.getKey(i).wasPressed(); !t) return 0;
+		if (min == 0 || t < min) min = t;
+	}
+	if (min) deals();
+	return min;
+}
+
+String KeyBindingClass::getId() const noexcept { return L"key." + region->id + L"." + id; }
+
 InteractManager::InteractManager() {
 	keyStatus[0x00].name = L"NONE";
 	keyStatus[0x01].name = L"LeftButton";
@@ -17,7 +69,6 @@ InteractManager::InteractManager() {
 	keyStatus[0x07].name = L"None";
 	keyStatus[0x08].name = L"Backspace";
 	keyStatus[0x09].name = L"Tab";
-	keyStatus[0x0D].name = L"Enter";
 	keyStatus[0x0A].name = L"None";
 	keyStatus[0x0B].name = L"None";
 	keyStatus[0x0C].name = L"Clear";
@@ -275,9 +326,25 @@ void InteractManager::updateMouse(const int x, const int y) noexcept {
 }
 
 bool InteractManager::isInSizeBox() const noexcept { return isInWindow() && !isInClientCaption(); }
-
+bool InteractManager::isInClient() const noexcept { return mouseX > interactSettings.actual.marginWidth && mouseX < renderer.getSyncWidth() - interactSettings.actual.marginWidth && mouseY > interactSettings.actual.captionHeight && mouseY < renderer.getSyncHeight() - interactSettings.actual.marginWidth; }
+bool InteractManager::isInCaption() const noexcept { return mouseX > interactSettings.actual.marginWidth && mouseX < renderer.getSyncWidth() - interactSettings.actual.marginWidth && mouseY > interactSettings.actual.marginWidth && mouseY < interactSettings.actual.captionHeight; }
 bool InteractManager::isInClientCaption() const noexcept { return mouseX > interactSettings.actual.marginWidth && mouseX < renderer.getSyncWidth() - interactSettings.actual.marginWidth && mouseY > interactSettings.actual.marginWidth && mouseY < renderer.getSyncHeight() - interactSettings.actual.marginWidth; }
 
-
-KeyStatus& InteractManager::getKey(const KeyBindingLegacy& binding) noexcept { return keyStatus[binding.keyCode]; }
 MouseButtonCode InteractManager::getMouseButtonCode() const noexcept { return (keyStatus[VK_LBUTTON].isPressed() ? static_cast<unsigned int>(MouseButtonCodeEnum::MBC_L_DOWN) : 0) | (keyStatus[VK_RBUTTON].isPressed() ? static_cast<int>(MouseButtonCodeEnum::MBC_R_DOWN) : 0) | (keyStatus[VK_MBUTTON].isPressed() ? static_cast<int>(MouseButtonCodeEnum::MBC_M_DOWN) : 0); }
+
+void InteractSettings::resizeSetSystemScale(const double scale) {
+	constants.systemScale = scale;
+	actual.uiScale = scale * options.uiScale;
+	actual.mapScale = scale * options.mapScale;
+}
+
+void InteractSettings::setUiScale(const double scale) {
+	options.uiScale = scale;
+	actual.uiScale = constants.systemScale * options.uiScale;
+	renderer.requireResize();
+}
+
+void InteractSettings::setMapScale(const double scale) {
+	options.mapScale = scale;
+	actual.mapScale = constants.systemScale * options.mapScale;
+}

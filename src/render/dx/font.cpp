@@ -8,7 +8,7 @@
 #include "direct.h"
 
 const DirectFont::Brush& DirectFont::getBrush(const unsigned int color) const { return manager->getBrush(color); }
-int DirectFont::getWidth(const RenderableString::StringConfig& config) const { return 0; }
+int DirectFont::getWidth(const RenderableString::StringConfig& config) const noexcept { return 0; }
 
 void DirectFont::tryCreate() const {
 	const HRESULT hr = manager->dwFactory->CreateTextFormat(name.c_str(), nullptr, DWRITE_FONT_WEIGHT_NORMAL, DWRITE_FONT_STYLE_NORMAL, DWRITE_FONT_STRETCH_NORMAL, static_cast<float>(height), L"zh-CN", &textFormat);
@@ -39,7 +39,7 @@ void DirectFont::drawDirect(const RenderableString::StringConfig& config, float 
 	manager->d2dContext->DrawTextLayout(D2D1::Point2F(0, 0), textLayout.Get(), clr.Get());
 }
 
-void DirectFont::draw(const RenderableString& text, int x, int y, const unsigned int color) const {
+void DirectFont::draw(const RenderableString& text, int x, int y, const unsigned int color) const noexcept {
 	manager->prepare();
 	float offset = 0;
 	for (const RenderableString::StringConfig& config : text.configs)
@@ -48,7 +48,7 @@ void DirectFont::draw(const RenderableString& text, int x, int y, const unsigned
 	manager->terminate();
 }
 
-void DirectFont::drawCenter(const RenderableString& text, int x, int y, int w, int h, unsigned color) const {}
+void DirectFont::drawCenter(const RenderableString& text, int x, int y, int w, int h, unsigned color) const noexcept {}
 
 void DirectFontManager::prepare() noexcept(false) {
 	if (isRenderingOnce) throw RuntimeException(L"DirectFontManager::prepare() called while isRenderingOnce == true");
@@ -155,5 +155,5 @@ DirectFont& DirectFontManager::newFont(String&& name, const double heightModifie
 	return fonts.emplace(assigned, std::move(DirectFont(this, assigned, std::move(name), heightModifier, yOffset, adaptAllSize, escapement, orientation))).first->second;
 }
 
-DirectFont& DirectFontManager::getDefault() const { return *defaultFont; }
-DirectFont& DirectFontManager::get(FontID id) const { return *defaultFont; }
+DirectFont& DirectFontManager::getDefault() const noexcept { return *defaultFont; }
+DirectFont& DirectFontManager::get(FontID id) const noexcept { return *defaultFont; }

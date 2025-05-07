@@ -7,6 +7,26 @@
 #include "World.h"
 #include "..\Game.h"
 
+void World::onRemove() noexcept(false) {
+	// Entity不需要在此处删除，交给EntityManager管理
+	for (auto& [id, entity] : entities) {
+		entity->onExitWorld(this, WorldTransportReason::WorldCollapse);
+		entity->changeWorld(0);
+		entity->world = nullptr;
+		game.entityManager->removeEntity(entity);
+	}
+	for (auto& [location, block] : blocks) {
+		block->onExitWorld(this, WorldTransportReason::WorldCollapse);
+		block->location.setWorld(0);
+		block->world = nullptr;
+		block->onRemove();
+	}
+	gc.submit<World>(this);
+	entities.clear();
+	blocks.clear();
+	Logger.debug(L"World::onRemove() called");
+}
+
 void World::adaptEntityVelocity(Entity& entity) const noexcept(false) {
 	if (!entity.world) return entity.momentum.velocityTick = game.getTick(), void();
 	if (entity.world != this) return entity.momentum.velocityTick = game.getTick(), void();
@@ -134,7 +154,7 @@ RayTraceResults World::rayTraceBlocks(const Vector2D& startAt, const Vector2D& d
 			}
 			// 正叉乘：顺时针转一下（指的是，方块中心到撞击边/角的偏移）
 			// 负叉乘：逆时针转一下（指的是，方块中心到撞击边/角的偏移）
-			const Vector2D fix = (cross > 0 ? CollidingSide::fromVector2D(fourWay).getClockwiseRotated() : CollidingSide::fromVector2D(fourWay).getAntiClockwiseRotated()).getDirectionBlock().multiply(0.5); // 修正向量，方块中心->被碰撞的一遍
+			const Vector2D fix = (cross > 0 ? CollidingSide::fromVector2D(fourWay).getClockwiseRotated() : CollidingSide::fromVector2D(fourWay).getAntiClockwiseRotated()).getDirectionBlock().multiply(0.5); // 修正向量，方块中心->被碰撞的一边
 			Vector2D ex = fix.getX() == 0 ? direction.clone().extendValueY(block.getY() + fix.getY() - startAt.getY()) : direction.clone().extendValueX(block.getX() + fix.getX() - startAt.getX());
 			if (ex.isZero() && false) {
 				Logger.warn(
@@ -269,33 +289,43 @@ BoundingBoxCollideResults World::boundingBoxCollideBlocks(const BoundingBox& bou
 			else if (e > 0) side = nearestSide.getAntiClockwiseRotated();
 			else side = nearestSide.getClockwiseRotated();
 			BoundingBoxCollideBlockResult result = BoundingBoxCollideBlockResult(BlockLocation(blockCenter, idWorld), 0, side);
-			if (side == CollidingSide::TOP || side == CollidingSide::BOTTOM) result.order = yOrder.find(result)->order;
-			else result.order = xOrder.find(result)->order;
+			if (side == CollidingSide::TOP || side == CollidingSide::BOTTOM) {
+				if (const auto iter = yOrder.find(result); iter != yOrder.end()) result.order = iter->order;
+				else result.order = 0; // 修复
+			}
+			else {
+				if (const auto iter = xOrder.find(result); iter != xOrder.end()) result.order = iter->order;
+				else result.order = 0; // 修复
+			}
 			results.blocks.emplace(result);
 		}
 	return results;
 }
 
 void WorldManager::tick() const noexcept(false) {
-	if (current) {
-		current->tick();
-		if (interactManager.isInWindow()) {
-			game.getFloatWindow().push(RenderableString(L"\\f\3\\#ffee66dd" + renderer.mousePointingAtBlock.toString()));
-			game.getFloatWindow().push(RenderableString(L"\\f\3\\#ffee0000" + renderer.mousePointingAtWorld.toString()));
-			if (const Block* block = current->getBlockAt(renderer.mousePointingAtBlock)) for (RenderableString& r : block->getDescription()) game.getFloatWindow().push(std::move(r));
+	Block* blockMousePointing = current ? current->getBlockAt(renderer.mousePointingAtBlock) : nullptr;
+	if (!game.getWindow()) { // 世界操作处理
+		if (int c = interactManager.dealMouseWheel(); c < 0) while (c++) interactSettings.actual.mapScale *= 0.96;
+		else if (c > 0) while (c--) interactSettings.actual.mapScale *= 1.05;
+		if (current && interactManager.isInClient()) {
+			if (interactManager.getKey(Keys::RightButton).isPressed()) if (blockMousePointing) current->removeBlockAt(renderer.mousePointingAtBlock.ofWorld(current->idWorld), WorldTransportReason::Debug), blockMousePointing->onRemove();
+			if (interactManager.getKey(Keys::LeftButton).isPressed() && !blockMousePointing) {
+				if (interactManager.getKey(Keys::LeftShift).isPressed()) current->addBlock(TestBarrierBlock::create(renderer.mousePointingAtBlock.ofWorld(current->idWorld)), WorldTransportReason::Debug);
+				else current->addBlock(TimedBarrierBlock::create(renderer.mousePointingAtBlock.ofWorld(current->idWorld)), WorldTransportReason::Debug);
+			}
 		}
 	}
-	if (!game.getWindow()) {
-		int c = interactManager.dealMouseWheel();
-		if (c < 0) while (c++) interactSettings.actual.mapScale *= 0.96;
-		else if (c > 0) while (c--) interactSettings.actual.mapScale *= 1.05;
-		if (current) {
-			if (interactManager.getKey(VK_RBUTTON).isPressed()) if (Block* block = current->getBlockAt(renderer.mousePointingAtBlock)) current->removeBlockAt(BlockLocation(renderer.mousePointingAtBlock.getPosition(), current->idWorld), WorldTransportReason::Debug), block->onRemove();
-			if (interactManager.getKey(VK_LBUTTON).isPressed())
-				if (!current->getBlockAt(renderer.mousePointingAtBlock)) {
-					if (interactManager.getKey(VK_SHIFT).isPressed()) current->addBlock(TestBarrierBlock::create(renderer.mousePointingAtBlock.ofWorld(current->idWorld)), WorldTransportReason::Debug);
-					else current->addBlock(TimedBarrierBlock::create(renderer.mousePointingAtBlock.ofWorld(current->idWorld)), WorldTransportReason::Debug);
-				}
+	if (current) { // 世界执行刻
+		if (!game.getWindow() || game.getWindow()) current->tick();
+		if (interactManager.isInClient()) {
+			renderer.mousePointingAtBlock.setWorld(current->idWorld);
+			game.getFloatWindow().push(RenderableString(L"\\f\3\\#ffee66dd" + renderer.mousePointingAtBlock.toString()));
+			game.getFloatWindow().push(RenderableString(L"\\f\3\\#ffee0000" + renderer.mousePointingAtWorld.toString(!interactManager.getKey(Keys::Tab).isPressedAndDeal())));
+			if (blockMousePointing) for (RenderableString& r : blockMousePointing->getDescription()) game.getFloatWindow().push(std::move(r));
+		}
+		if (speedTweaker.wasPressedThenDeal()) {
+			if (interactSettings.constants.msPerTick == interactSettings.constants.MsPerTick) interactSettings.constants.msPerTick = 20 * interactSettings.constants.MsPerTick;
+			else interactSettings.constants.msPerTick = interactSettings.constants.MsPerTick;
 		}
 	}
 }

@@ -49,7 +49,7 @@ public:
 	Action mouseClick; // 传入int表示变更按键。0x0左, 0x1中, 0x2右；0x8表示是否双击
 	Action onTick; // 传入int忽略
 	Color backgroundColor;
-	Color foregroundColor{ TextColor };
+	Color foregroundColor{TextColor};
 
 protected:
 	mutable bool hasMouse = false;
@@ -60,7 +60,7 @@ protected:
 public:
 	UILocation location;
 	UILocation textLocation = UILocation::CENTER; // 多余字节预声明备用
-	char unused[2]{}; // [0]: [1]: maxRestore_flag_IsZoomed
+	char unused[2]{};
 
 	Widget(const double x, const double y, const double w, const double h, const UILocation location) : x(x), y(y), w(w), h(h), location(location) {}
 
@@ -148,7 +148,7 @@ class Window : public AnywhereEditable<Window, WindowManager>, public IRenderabl
 protected:
 	friend class Garbage<Window>;
 	friend class AnywhereEditableList<Window, WindowManager>;
-	List<ObjectHolder<Widget>> widgets;
+	List<Container<Widget>> widgets;
 
 	Window() = default;
 
@@ -166,15 +166,20 @@ public:
 	 */
 	virtual bool onOpen() { return true; }
 	/**
+	 * 指示该窗口打开时，是否要暂停游戏的进行。有些时候，窗口打开时需要暂停游戏的进行。
+	 * @returns 是否暂停游戏
+	 */
+	virtual bool pausesGame() { return true; }
+	/**
 	 * 由于键盘响应是非同步的，为了防止一些线程间的冲突，此方法由MainThread调用，在GameThread实施。
 	 */
 	virtual void syncClose(const bool value = true) { reserved[0] = value; }
 	/**
 	 * 在Game.setWindow()时，本窗口关闭时调用。
 	 * 不应当外部调用。
-	 * 注意，关闭未必就是删除。
+	 * 注意，关闭未必就是删除。当然你显然是可以在这个函数里删除自身的。
 	 */
-	virtual void onClose() = 0;
+	virtual void onClose() { pop(); }
 	virtual void onResize();
 	virtual int passEvent(MouseActionCode action, MouseButtonCode value, int x, int y) noexcept;
 };
@@ -189,58 +194,74 @@ public:
 };
 
 class CaptionWindow final : public Window {
+	bool hidden = false;
+
 public:
 	CaptionWindow();
 	bool onOpen() override;
 	void onClose() override;
 	void render(double tickDelta, QWORD tickRendering) const noexcept override;
 	void onResize() override;
+	void showCaption() noexcept { hidden = false; }
+	void hideCaption() noexcept { hidden = true; }
+	[[nodiscard]] bool isHidden() const noexcept { return hidden; }
 };
 
 class FloatWindow final : public Window {
 	mutable int x = 0; // 标记渲染起始点
 	mutable int y = 0; // 标记渲染起始点
-	typedef List<ObjectHolder<RenderableString>> lt;
-	SynchronizedHolder<lt> strings;
+	mutable AtomicStorage flag;
+	mutable QWORD thisTick = 0;
+	List<Container<RenderableString>> lastTickStrings;
+	List<Container<RenderableString>> strings;
 
 public:
-	FloatWindow() : Window() {
-		strings.setNew<lt>(std::move(lt()));
-		strings.ok();
-		strings.async();
+	FloatWindow() = default;
+	FloatWindow(const FloatWindow&) = delete;
+	FloatWindow(FloatWindow&&) = delete;
+	FloatWindow& operator=(const FloatWindow&) = delete;
+	FloatWindow& operator=(FloatWindow&&) = delete;
+	~FloatWindow() override = default;
+
+	void push(const Container<RenderableString>& string) {
+		flag.atomicAcquire();
+		strings.push_back(string);
+		flag.atomicRelease();
 	}
 
-	void clear() { strings.setNew<lt>(std::move(lt())); }
+	void push(Container<RenderableString>&& string) {
+		flag.atomicAcquire();
+		strings.push_back(std::move(string));
+		flag.atomicRelease();
+	}
 
-	void push(const ObjectHolder<RenderableString>& string) const { if (strings.ptrNew()) strings.getNew().push_back(string); }
-	void push(ObjectHolder<RenderableString>&& string) const { if (strings.ptrNew()) strings.getNew().push_back(std::move(string)); }
+	void clear() noexcept;
 	void render(double tickDelta, QWORD tickRendering) const noexcept override;
 	void tick() noexcept(false) override {}
 	bool onOpen() override { return true; }
 	void onClose() override {}
-	void update() const noexcept { strings.ok(); }
 };
 
 class Button : public Widget {
 public:
-	ObjectHolder<IText> name;
+	Container<IText> name;
 	Animation animation = Animation().features(Animation::AS_CUBIC).setDuration(20);
-	Button(const double x, const double y, const double w, const double h, const UILocation location, const ObjectHolder<IText>& text) : Widget(x, y, w, h, location), name(text) {}
-	Button(const double x, const double y, const double w, const double h, const UILocation location, ObjectHolder<IText>&& text) : Widget(x, y, w, h, location), name(std::move(text)) {}
+	Button(const double x, const double y, const double w, const double h, const UILocation location, const Container<IText>& text) : Widget(x, y, w, h, location), name(text) {}
+	Button(const double x, const double y, const double w, const double h, const UILocation location, Container<IText>&& text) : Widget(x, y, w, h, location), name(std::move(text)) {}
 	void render(double tickDelta, QWORD tickRendering) const noexcept override;
 };
 
 
 class ConfirmWindow : public Window {
 public:
-	ObjectHolder<IText> text;
+	Container<IText> text;
 	Button
 		*confirm = nullptr,
 		*cancel = nullptr;
 
 private:
-	ConfirmWindow(const ObjectHolder<IText>& text) : Window(), text(text) {}
-	ConfirmWindow(ObjectHolder<IText>&& text) : Window(), text(std::move(text)) {}
+	ConfirmWindow(const Container<IText>& text) : Window(), text(text) {}
+	ConfirmWindow(Container<IText>&& text) : Window(), text(std::move(text)) {}
 
 public:
 	~ConfirmWindow() override = default; // 不需要delete，析构时Window会自动delete
@@ -251,17 +272,13 @@ public:
 		w >>= 2, h >>= 2;
 		renderer.fill(w, h, w + w, h + h, 0xcc222222);
 		renderer.getFontManager().getDefault().drawCenter(text->getRenderableString(), w, h, w + w, h + (h >> 1), 0xffeeeeee);
-		for (const ObjectHolder<Widget>& widget : widgets) widget->render(tickDelta, tickRendering);
+		for (const Container<Widget>& widget : widgets) widget->render(tickDelta, tickRendering);
 	}
 
 	ConfirmWindow& requireConfirm(const Function<void(Button&)>& func = {});
-
 	ConfirmWindow& requireCancel(const Function<void(Button&)>& func = {});
-
 	ConfirmWindow&& move() noexcept { return std::move(*this); }
 
-	void onClose() override;
-
-	static ConfirmWindow* of(const ObjectHolder<IText>& text) { return allocatedFor(new ConfirmWindow(text)); }
-	static ConfirmWindow* of(ObjectHolder<IText>&& text) { return allocatedFor(new ConfirmWindow(std::move(text))); }
+	static ConfirmWindow* of(const Container<IText>& text) { return allocatedFor(new ConfirmWindow(text)); }
+	static ConfirmWindow* of(Container<IText>&& text) { return allocatedFor(new ConfirmWindow(std::move(text))); }
 };

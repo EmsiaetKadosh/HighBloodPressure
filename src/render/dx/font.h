@@ -5,6 +5,7 @@
 #pragma once
 
 #include "dxdef.h"
+#include "..\..\utils\IText.h"
 
 class [[carlbeks::predecl, carlbeks::defineat("direct.h")]] DirectFontManager;
 class [[carlbeks::predecl, carlbeks::defineat("direct.h")]] DirectX12Renderer;
@@ -18,7 +19,7 @@ class DirectFont final : public IFonts {
 	DirectFontManager* manager;
 
 	[[nodiscard]] const Brush& getBrush(unsigned int color) const;
-	[[nodiscard]] int getWidth(const RenderableString::StringConfig& config) const override;
+	[[nodiscard]] int getWidth(const RenderableString::StringConfig& config) const noexcept override;
 	[[nodiscard]] float drawSingle(const RenderableString::StringConfig& config, float x, float y, unsigned int defaultColor) const;
 	void drawDirect(const RenderableString::StringConfig& config, float x, float y, unsigned int defaultColor) const;
 	void tryCreate() const;
@@ -28,8 +29,8 @@ class DirectFont final : public IFonts {
 public:
 	DirectFont(const DirectFont&) = default;
 	DirectFont(DirectFont&&) = default;
-	void draw(const RenderableString& text, int x, int y, unsigned color) const override;
-	void drawCenter(const RenderableString& text, int x, int y, int w, int h, unsigned color) const override;
+	void draw(const RenderableString& text, int x, int y, unsigned color) const noexcept override;
+	void drawCenter(const RenderableString& text, int x, int y, int w, int h, unsigned color) const noexcept override;
 };
 
 class DirectFontManager final : public IFontManager {
@@ -67,6 +68,6 @@ public:
 	void resize(int width, int height) override;
 	DirectFont& newFont(const String& name, double heightModifier, double yOffset, bool adaptAllSize, long escapement, long orientation) override;
 	DirectFont& newFont(String&& name, double heightModifier, double yOffset, bool adaptAllSize, long escapement, long orientation) override;
-	[[nodiscard]] DirectFont& getDefault() const override;
-	[[nodiscard]] DirectFont& get(FontID id) const override;
+	[[nodiscard]] DirectFont& getDefault() const noexcept override;
+	[[nodiscard]] DirectFont& get(FontID id) const noexcept override;
 };

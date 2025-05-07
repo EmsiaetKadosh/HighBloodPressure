@@ -26,13 +26,21 @@ protected:
 	virtual void deleteThis() = 0;
 };
 
+namespace $LimitedAccess {
+	/**
+	 * 仅仅是为了garbage使用的
+	 */
+	String garbageStacktraceString(const std::stacktrace&) noexcept;
+}
+
 template <typename T>
 class Garbage final : public IGarbage {
 	friend class GarbageCollector;
+	std::stacktrace submitContext;
 
 public:
-	Garbage(T* ptr) : IGarbage(ptr) {}
-	void collect() override { delete static_cast<T*>(deallocating(ptr)); }
+	Garbage(T* ptr) : IGarbage(ptr), submitContext(std::stacktrace::current()) {}
+	void collect() override { delete static_cast<T*>(deallocating_message(ptr, $LimitedAccess::garbageStacktraceString(submitContext))); }
 
 protected:
 	void deleteThis() override { delete deallocating(this); }

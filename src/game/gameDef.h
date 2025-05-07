@@ -192,6 +192,7 @@ struct BoundingBoxCollideResults {
 	Set<BoundingBoxCollideBlockResult, BoundingBoxCollideBlockResult::Less> blocks;
 	Vector<BoundingBoxCollideEntityResult> entities;
 };
+
 namespace $LimitedAccess {
 	struct BoundingBoxTraceOrder {
 		double val;

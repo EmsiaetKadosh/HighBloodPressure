@@ -73,14 +73,23 @@ protected:
 	int syncWidth = 0, syncHeight = 0; // 指示实时大小。为了防抖，只会在改变窗口大小结束时resize并重写windowWidth和windowHeight
 	mutable Camera camera;
 	mutable IFontManager* fontManager;
+	Animation mousePointingAtFlash = Animation().includeReverse().setDuration(40).features(Animation::AS_QUADRATIC).depends(Animation::AD_TIME);
+	Task resizeReloadBitmap{nullptr};
+
+	/**
+	 * @brief 辅助函数，传递friend属性。用于在resize中设置uiScale和mapScale而不requireResize
+	 */
+	void setSystemScale() const noexcept { interactSettings.resizeSetSystemScale(nMin(static_cast<double>(windowWidth) / 3840.0, static_cast<double>(windowHeight) / 2160.0)); }
 
 public:
 	double fps = 0, tps = 0;
-	Task resizeReloadBitmap{nullptr};
 	Vector2D mousePointingAtWorld = Vector2D();
 	BlockLocation mousePointingAtBlock = BlockLocation(0, 0, 0);
-	Animation mousePointingAtFlash = Animation().includeReverse().setDuration(40).features(Animation::AS_QUADRATIC).depends(Animation::AD_TIME);
 
+protected:
+	bool zoomed = false;
+
+public:
 	IRenderer() = default;
 	IRenderer(const IRenderer&) = delete;
 	IRenderer(IRenderer&&) = delete;
@@ -94,8 +103,11 @@ public:
 	virtual IRenderer& postInitialize() noexcept = 0;
 
 	void syncSize(const int width, const int height) noexcept { syncWidth = width, syncHeight = height; }
+	void setZoom(const bool value) noexcept { if (zoomed != value) zoomed = value, ShowWindow(MainWindowHandle, value ? SW_MAXIMIZE : SW_RESTORE); }
+	bool isZoomed() const noexcept { return zoomed; }
 	[[nodiscard]] int getWidth() const noexcept { return windowWidth; }
 	[[nodiscard]] int getHeight() const noexcept { return windowHeight; }
+	[[nodiscard]] int getClientHeight() const noexcept;
 	[[nodiscard]] int getSyncWidth() const noexcept { return syncWidth; }
 	[[nodiscard]] int getSyncHeight() const noexcept { return syncHeight; }
 	[[nodiscard]] IFontManager& getFontManager() const noexcept { return *fontManager; }
@@ -127,7 +139,7 @@ public:
 class GdiRenderer final : public IRenderer {
 	friend class Game;
 	friend class GdiFont;
-	friend LRESULT __stdcall WndProc(HWND hwnd, UINT uMsg, WPARAM wParam, LPARAM lParam);
+	friend LRESULT __stdcall WindowCallback(HWND hwnd, UINT uMsg, WPARAM wParam, LPARAM lParam);
 	inline static BLENDFUNCTION blendFunction = {
 		.BlendOp = AC_SRC_OVER, // Only
 		.BlendFlags = 0, // Must 0

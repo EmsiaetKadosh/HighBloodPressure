@@ -44,8 +44,8 @@ void Entity::onDeath() {}
 void Entity::tick() noexcept(false) {
 	updatePosition();
 	if (!world) return;
-	if (accelerate.getX() == 0) accelerate.add(isOnGround() ? nRange(-velocity.getX(), -0.2, 0.2) : nRange(-velocity.getX(), -0.03, 0.03), cancelGravityOnce ? 0 : 0.02);
-	else if (!cancelGravityOnce) accelerate.add(0, 0.02);
+	if (accelerate.getX() == 0) accelerate.setX(accelerate.getX() + (isOnGround() ? nRange(-velocity.getX(), -0.2, 0.2) : nRange(-velocity.getX(), -0.03, 0.03)));
+	accelerate.add(world->getForceField(*this, !cancelGravityOnce));
 	cancelGravityOnce = false;
 	velocity.add(accelerate);
 	if (velocity.getY() > 3) velocity.setY(3);

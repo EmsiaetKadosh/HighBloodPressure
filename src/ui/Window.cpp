@@ -14,7 +14,7 @@ int Window::pop() noexcept {
 	Success();
 }
 
-void Window::render(const double tickDelta, QWORD tickRendering) const noexcept { for (const Widget* widget : widgets) widget->render(tickDelta, tickRendering); }
+void Window::render(const double tickDelta, const QWORD tickRendering) const noexcept { for (const Widget* widget : widgets) widget->render(tickDelta, tickRendering); }
 
 void Window::tick() noexcept(false) {
 	for (Widget* widget : widgets) widget->tick();
@@ -65,12 +65,8 @@ CaptionWindow::CaptionWindow() {
 	close->foregroundColor.clicked = 0xff000000;
 
 	Widget* maxRestore = widgets.emplace_back(Button(-interactSettings.actual.captionHeight, 0, interactSettings.actual.captionHeight, interactSettings.actual.captionHeight, UILocation::RIGHT_TOP, IsZoomed(MainWindowHandle) ? L"\\f\1🗗"_literal : L"\\f\1🗖"_literal));
-	maxRestore->mouseClick = [](Widget&, MouseButtonCode) {};
-	maxRestore->mouseClick = [](Widget& self, MouseButtonCode) {
-		if ((self.unused[1] = static_cast<char>(IsZoomed(MainWindowHandle)))) ShowWindow(MainWindowHandle, SW_RESTORE);
-		else ShowWindow(MainWindowHandle, SW_MAXIMIZE);
-	};
-	maxRestore->onTick = [](const Widget& self, MouseButtonCode) { if (self.containsMouse()) game.getFloatWindow().push(self.unused[1] ? TranslatableText(L"hbp.caption.maximize").getRenderableString() : TranslatableText(L"hbp.caption.restore").getRenderableString()); };
+	maxRestore->mouseClick = [](Widget&, MouseButtonCode) { renderer.setZoom(!renderer.isZoomed()); };
+	maxRestore->onTick = [](const Widget& self, MouseButtonCode) { if (self.containsMouse()) game.getFloatWindow().push(renderer.isZoomed() ? TranslatableText(L"hbp.caption.restore").getRenderableString() : TranslatableText(L"hbp.caption.maximize").getRenderableString()); };
 	maxRestore->absolute();
 	maxRestore->unused[1] = static_cast<char>(IsZoomed(MainWindowHandle));
 	maxRestore->backgroundColor.hover = 0xffcccccc;
@@ -110,8 +106,8 @@ CaptionWindow::CaptionWindow() {
 		} else if (static_cast<int>(MouseButtonCodeEnum::MBC_M_CHANGE) & code) {
 			Logger.info(L"LastError: " + std::to_wstring(GetLastError()));
 			Logger.info(game.entityManager->getEntity(1)->getLocation().getPosition().toString());
-			if (interactSettings.constants.msPerTick < 100) interactSettings.constants.msPerTick = 600;
-			else interactSettings.constants.msPerTick = 10;
+			if (interactSettings.constants.msPerTick < 100) interactSettings.constants.msPerTick = 40 * InteractSettings::Constants::MsPerTick;
+			else interactSettings.constants.msPerTick = InteractSettings::Constants::MsPerTick;
 		}
 	};
 	options->absolute();
@@ -128,7 +124,8 @@ CaptionWindow::CaptionWindow() {
 bool CaptionWindow::onOpen() { throw InvalidOperationException(L"Should not open CaptionWindow"); }
 void CaptionWindow::onClose() { throw InvalidOperationException(L"Should not close CaptionWindow"); }
 
-void CaptionWindow::render(const double tickDelta, QWORD tickRendering) const noexcept {
+void CaptionWindow::render(const double tickDelta, const QWORD tickRendering) const noexcept {
+	if (hidden) return;
 	renderer.fill(0, 0, renderer.getWidth(), interactSettings.actual.captionHeight, 0xff666666);
 	for (const Widget* widget : widgets) widget->render(tickDelta, tickRendering);
 }
@@ -154,19 +151,23 @@ void CaptionWindow::onResize() {
 	Window::onResize();
 }
 
-void FloatWindow::render(double tickDelta, QWORD tickRendering) const noexcept {
-	if (not interactManager.isInWindow()) {
-		strings.async();
-		return;
-	}
-	if (strings.get().empty()) {
-		strings.async();
-		return;
-	}
+void FloatWindow::clear() noexcept {
+	flag.atomicAcquire();
+	lastTickStrings.swap(strings);
+	strings.clear();
+	thisTick = game.getTick();
+	flag.atomicRelease();
+}
+
+void FloatWindow::render(double tickDelta, const QWORD tickRendering) const noexcept {
+	if (not interactManager.isInWindow()) return;
+	const List<Container<RenderableString>>& list = tickRendering > thisTick ? this->strings : this->lastTickStrings;
+	if (list.empty()) return;
 	x = interactManager.getMouseX();
 	y = interactManager.getMouseY();
 	int height = 0, width = 0;
-	for (const RenderableString* str : strings.get()) {
+	flag.atomicAcquire(true);
+	for (const RenderableString* str : list) {
 		height += str->getHeight();
 		if (str->getWidth() > width) width = str->getWidth();
 	}
@@ -181,19 +182,18 @@ void FloatWindow::render(double tickDelta, QWORD tickRendering) const noexcept {
 	const int xf = x + interactSettings.actual.floatWindowMargin;
 	int yf = y + interactSettings.actual.floatWindowMargin;
 
-	for (const RenderableString* str : strings.get()) {
+	for (const RenderableString* str : list) {
 		renderer.getFontManager().getDefault().draw(*str, xf, yf);
 		yf += str->getHeight();
 	}
-
-	strings.async();
+	flag.atomicRelease(true);
 }
 
 
 unsigned int Widget::colorSelector(const Color& clr) const {
 	if (!isActive) return clr.inactive;
 	if (!hasMouse) return clr.active;
-	if (hasMouseTrigger && (interactManager.getKey(VK_LBUTTON).isPressed() || interactManager.getKey(VK_RBUTTON).isPressed() || interactManager.getKey(VK_MBUTTON).isPressed())) return clr.clicked;
+	if (hasMouseTrigger && (interactManager.getKey(Keys::LeftButton).isPressed() || interactManager.getKey(Keys::RightButton).isPressed() || interactManager.getKey(Keys::MiddleButton).isPressed())) return clr.clicked;
 	return clr.hover;
 }
 
@@ -210,11 +210,11 @@ void Widget::onResize() {
 				break;
 			case UILocation::LEFT:
 				left = static_cast<int>(x);
-				top = static_cast<int>(y) + (renderer.getHeight() - height >> 1);
+				top = static_cast<int>(y) + (renderer.getClientHeight() - height >> 1);
 				break;
 			case UILocation::LEFT_BOTTOM:
 				left = static_cast<int>(x);
-				top = static_cast<int>(y) + renderer.getHeight() - height;
+				top = static_cast<int>(y) + renderer.getClientHeight() - height;
 				break;
 			case UILocation::TOP:
 				left = static_cast<int>(x) + (renderer.getWidth() - width >> 1);
@@ -222,11 +222,11 @@ void Widget::onResize() {
 				break;
 			case UILocation::CENTER:
 				left = static_cast<int>(x) + (renderer.getWidth() - width >> 1);
-				top = static_cast<int>(y) + (renderer.getHeight() - height >> 1);
+				top = static_cast<int>(y) + (renderer.getClientHeight() - height >> 1);
 				break;
 			case UILocation::BOTTOM:
 				left = static_cast<int>(x) + (renderer.getWidth() - width >> 1);
-				top = static_cast<int>(y) + renderer.getHeight() - height;
+				top = static_cast<int>(y) + renderer.getClientHeight() - height;
 				break;
 			case UILocation::RIGHT_TOP:
 				left = static_cast<int>(x) + renderer.getWidth() - width;
@@ -234,58 +234,58 @@ void Widget::onResize() {
 				break;
 			case UILocation::RIGHT:
 				left = static_cast<int>(x) + renderer.getWidth() - width;
-				top = static_cast<int>(y) + (renderer.getHeight() - height >> 1);
+				top = static_cast<int>(y) + (renderer.getClientHeight() - height >> 1);
 				break;
 			case UILocation::RIGHT_BOTTOM:
 				left = static_cast<int>(x) + renderer.getWidth() - width;
-				top = static_cast<int>(y) + renderer.getHeight() - height;
+				top = static_cast<int>(y) + renderer.getClientHeight() - height;
 				break;
 		}
 	} else {
 		width = static_cast<int>(renderer.getWidth() * w);
-		height = static_cast<int>(renderer.getHeight() * h);
+		height = static_cast<int>(renderer.getClientHeight() * h);
 		switch (location) {
 			case UILocation::LEFT_TOP:
 				left = static_cast<int>(renderer.getWidth() * x);
-				top = static_cast<int>(renderer.getHeight() * y);
+				top = static_cast<int>(renderer.getClientHeight() * y);
 				break;
 			case UILocation::LEFT:
 				left = static_cast<int>(renderer.getWidth() * x);
-				top = static_cast<int>(renderer.getHeight() * y) + (renderer.getHeight() - height >> 1);
+				top = static_cast<int>(renderer.getClientHeight() * y) + (renderer.getClientHeight() - height >> 1);
 				break;
 			case UILocation::LEFT_BOTTOM:
 				left = static_cast<int>(renderer.getWidth() * x);
-				top = static_cast<int>(renderer.getHeight() * y) + renderer.getHeight() - height;
+				top = static_cast<int>(renderer.getClientHeight() * y) + renderer.getClientHeight() - height;
 				break;
 			case UILocation::TOP:
 				left = static_cast<int>(renderer.getWidth() * x) + (renderer.getWidth() - width >> 1);
-				top = static_cast<int>(renderer.getHeight() * y);
+				top = static_cast<int>(renderer.getClientHeight() * y);
 				break;
 			case UILocation::CENTER:
 				left = static_cast<int>(renderer.getWidth() * x) + (renderer.getWidth() - width >> 1);
-				top = static_cast<int>(renderer.getHeight() * y) + (renderer.getHeight() - height >> 1);
+				top = static_cast<int>(renderer.getClientHeight() * y) + (renderer.getClientHeight() - height >> 1);
 				break;
 			case UILocation::BOTTOM:
 				left = static_cast<int>(renderer.getWidth() * x) + (renderer.getWidth() - width >> 1);
-				top = static_cast<int>(renderer.getHeight() * y) + renderer.getHeight() - height;
+				top = static_cast<int>(renderer.getClientHeight() * y) + renderer.getClientHeight() - height;
 				break;
 			case UILocation::RIGHT_TOP:
 				left = static_cast<int>(renderer.getWidth() * x) + renderer.getWidth() - width;
-				top = static_cast<int>(renderer.getHeight() * y);
+				top = static_cast<int>(renderer.getClientHeight() * y);
 				break;
 			case UILocation::RIGHT:
 				left = static_cast<int>(renderer.getWidth() * x) + renderer.getWidth() - width;
-				top = static_cast<int>(renderer.getHeight() * y) + (renderer.getHeight() - height >> 1);
+				top = static_cast<int>(renderer.getClientHeight() * y) + (renderer.getClientHeight() - height >> 1);
 				break;
 			case UILocation::RIGHT_BOTTOM:
 				left = static_cast<int>(renderer.getWidth() * x) + renderer.getWidth() - width;
-				top = static_cast<int>(renderer.getHeight() * y) + renderer.getHeight() - height;
+				top = static_cast<int>(renderer.getClientHeight() * y) + renderer.getClientHeight() - height;
 				break;
 		}
 	}
 }
 
-void Button::render(const double tickDelta, QWORD tickRendering) const noexcept {
+void Button::render(const double tickDelta, const QWORD tickRendering) const noexcept {
 	Widget::render(tickDelta, tickRendering);
 	if (name) renderer.getFontManager().getDefault().drawCenter(name->getRenderableString(), left, top, width, height, colorSelector(foregroundColor));
 }
@@ -346,5 +346,3 @@ ConfirmWindow& ConfirmWindow::requireCancel(const Function<void(Button&)>& func)
 	cancel->onResize();
 	return *this;
 }
-
-void ConfirmWindow::onClose() { pop(); }

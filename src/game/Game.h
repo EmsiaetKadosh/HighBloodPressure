@@ -12,6 +12,10 @@
 class [[carlbeks::predecl, carlbeks::defineat("World.h")]] WorldManager;
 class [[carlbeks::predecl, carlbeks::defineat("Entity.h")]] EntityManager;
 
+struct GameOptions {
+	bool autoJumpHighest = true;
+};
+
 class Game final /* : public IRenderable, public ITickable */ {
 	friend void gameThread();
 	friend void renderThread();
@@ -26,6 +30,7 @@ public:
 	std::minstd_rand random;
 	WorldManager* worldManager = nullptr;
 	EntityManager* entityManager = nullptr;
+	GameOptions options;
 
 private:
 	/**
@@ -40,6 +45,7 @@ public:
 
 	int closeWindow(Window* const window) noexcept { return windows.pop(window); }
 	[[nodiscard]] FloatWindow& getFloatWindow() const noexcept { return *floatWindow; }
+	[[nodiscard]] CaptionWindow& getCaption() const noexcept { return *caption; }
 	[[nodiscard]] QWORD getTick() const noexcept { return currentTick; }
 	void tick() noexcept(false);
 	void render(double tickDelta, QWORD tickRendering) const noexcept;

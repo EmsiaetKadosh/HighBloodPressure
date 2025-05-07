@@ -112,7 +112,7 @@ public:
 	PublicLogger& put(const String& msg) noexcept {
 		const String& str = L"          " + name + L"        " + msg + L"\n";
 		atomicAcquire();
-		SetConsoleTextAttribute(GetStdHandle(STD_OUTPUT_HANDLE), FOREGROUND_RED | FOREGROUND_BLUE);
+		SetConsoleTextAttribute(GetStdHandle(STD_OUTPUT_HANDLE), FOREGROUND_RED | FOREGROUND_BLUE | FOREGROUND_INTENSITY);
 		std::wcout << str;
 		atomicRelease();
 		mainLogger << str;
@@ -122,7 +122,7 @@ public:
 	PublicLogger& trace(const String& msg) noexcept {
 		const String& str = build(msg, L"[Trace] ");
 		atomicAcquire();
-		SetConsoleTextAttribute(GetStdHandle(STD_OUTPUT_HANDLE), FOREGROUND_GREEN | FOREGROUND_BLUE);
+		SetConsoleTextAttribute(GetStdHandle(STD_OUTPUT_HANDLE), FOREGROUND_BLUE | FOREGROUND_INTENSITY);
 		std::wcout << str;
 		atomicRelease();
 		mainLogger << str;
@@ -132,7 +132,7 @@ public:
 	PublicLogger& debug(const String& msg) noexcept {
 		const String& str = build(msg, L"[Debug] ");
 		atomicAcquire();
-		SetConsoleTextAttribute(GetStdHandle(STD_OUTPUT_HANDLE), FOREGROUND_BLUE);
+		SetConsoleTextAttribute(GetStdHandle(STD_OUTPUT_HANDLE), FOREGROUND_BLUE | FOREGROUND_GREEN);
 		std::wcout << str;
 		atomicRelease();
 		mainLogger << str;
@@ -152,7 +152,7 @@ public:
 	PublicLogger& info(const String& msg) noexcept {
 		const String& str = build(msg, L"[Info]  ");
 		atomicAcquire();
-		SetConsoleTextAttribute(GetStdHandle(STD_OUTPUT_HANDLE), FOREGROUND_RED | FOREGROUND_GREEN | FOREGROUND_BLUE);
+		SetConsoleTextAttribute(GetStdHandle(STD_OUTPUT_HANDLE), FOREGROUND_RED | FOREGROUND_GREEN | FOREGROUND_BLUE | FOREGROUND_INTENSITY);
 		std::wcout << str;
 		atomicRelease();
 		mainLogger << str;
@@ -162,7 +162,7 @@ public:
 	PublicLogger& warn(const String& msg) noexcept {
 		const String& str = build(msg, L"[Warn]  ");
 		atomicAcquire();
-		SetConsoleTextAttribute(GetStdHandle(STD_OUTPUT_HANDLE), FOREGROUND_RED | FOREGROUND_GREEN);
+		SetConsoleTextAttribute(GetStdHandle(STD_OUTPUT_HANDLE), FOREGROUND_RED | FOREGROUND_GREEN | FOREGROUND_INTENSITY);
 		std::wcout << str;
 		atomicRelease();
 		mainLogger << str;
@@ -172,7 +172,17 @@ public:
 	PublicLogger& error(const String& msg) noexcept {
 		const String& str = build(msg, L"[Error] ");
 		atomicAcquire();
-		SetConsoleTextAttribute(GetStdHandle(STD_OUTPUT_HANDLE), FOREGROUND_RED);
+		SetConsoleTextAttribute(GetStdHandle(STD_OUTPUT_HANDLE), FOREGROUND_RED | FOREGROUND_INTENSITY);
+		std::wcout << str;
+		atomicRelease();
+		mainLogger << str;
+		return *this;
+	}
+
+	PublicLogger& fatal(const String& msg) noexcept {
+		const String& str = build(msg, L"[FATAL] ");
+		atomicAcquire();
+		SetConsoleTextAttribute(GetStdHandle(STD_OUTPUT_HANDLE), BACKGROUND_RED);
 		std::wcout << str;
 		atomicRelease();
 		mainLogger << str;

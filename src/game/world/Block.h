@@ -47,30 +47,62 @@ public:
 	virtual bool adaptEntityVelocity(Entity& entity, const Vector2D& position, Vector2D& velocity, const Vector2D& rest, Vector2D& currentRest, const CollidingSide side) const {
 		Vector2D adapted = velocity;
 		switch (side) {
-			case CollidingSide::LEFT_TOP:
-			case CollidingSide::LEFT_BOTTOM:
+			case CollidingSide::LEFT_TOP: {
+				const CollidingSide sd = CollidingSide::fromVector2D(velocity.getFourWay());
+				if (sd == CollidingSide::RIGHT) goto left;
+				if (sd == CollidingSide::BOTTOM) goto top;
+				Logger.error(getLocation().toString());
+				Logger.error(side.toString() + L" => " + sd.toString());
+				break;
+			}
+			case CollidingSide::LEFT_BOTTOM: {
+				const CollidingSide sd = CollidingSide::fromVector2D(velocity.getFourWay());
+				if (sd == CollidingSide::RIGHT) goto left;
+				if (sd == CollidingSide::TOP) goto bottom;
+				Logger.error(getLocation().toString());
+				Logger.error(side.toString() + L" => " + sd.toString());
+				break;
+			}
+			case CollidingSide::RIGHT_TOP: {
+				const CollidingSide sd = CollidingSide::fromVector2D(velocity.getFourWay());
+				if (sd == CollidingSide::LEFT) goto right;
+				if (sd == CollidingSide::BOTTOM) goto top;
+				Logger.error(getLocation().toString());
+				Logger.error(side.toString() + L" => " + sd.toString());
+				break;
+			}
+			case CollidingSide::RIGHT_BOTTOM: {
+				const CollidingSide sd = CollidingSide::fromVector2D(velocity.getFourWay());
+				if (sd == CollidingSide::LEFT) goto right;
+				if (sd == CollidingSide::TOP) goto bottom;
+				Logger.error(getLocation().toString());
+				Logger.error(side.toString() + L" => " + sd.toString());
+				break;
+			}
 			case CollidingSide::LEFT: {
-				adapted.extendValueX(location.getX() - entity.getBoundingBox().getRight() - position.getX() /* - EpsilonValue */);
+			left:
+				adapted.extendValueX(static_cast<double>(location.getX()) - entity.getBoundingBox().getRight() - position.getX() /* - EpsilonValue */);
 				currentRest.strictSelect((rest - adapted).setX(0));
 				if (adapted.lengthManhattan() >= velocity.lengthManhattan()) return false;
 				return velocity = adapted, true;
 			}
 			case CollidingSide::TOP: {
-				adapted.extendValueY(location.getY() - entity.getBoundingBox().getBottom() - position.getY() /* - EpsilonValue */);
+			top:
+				adapted.extendValueY(static_cast<double>(location.getY()) - entity.getBoundingBox().getBottom() - position.getY() /* - EpsilonValue */);
 				currentRest.strictSelect((rest - adapted).setY(0));
 				if (adapted.lengthManhattan() >= velocity.lengthManhattan()) return false;
 				return velocity = adapted, true;
 			}
-			case CollidingSide::RIGHT_TOP:
-			case CollidingSide::RIGHT_BOTTOM:
 			case CollidingSide::RIGHT: {
-				adapted.extendValueX(location.getX() + 1 + entity.getBoundingBox().getLeft() - position.getX() /* + EpsilonValue */);
+			right:
+				adapted.extendValueX(static_cast<double>(location.getX()) + 1 + entity.getBoundingBox().getLeft() - position.getX() /* + EpsilonValue */);
 				currentRest.strictSelect((rest - adapted).setX(0));
 				if (adapted.lengthManhattan() >= velocity.lengthManhattan()) return false;
 				return velocity = adapted, true;
 			}
 			case CollidingSide::BOTTOM: {
-				adapted.extendValueY(location.getY() + 1 + entity.getBoundingBox().getTop() - position.getY() /* + EpsilonValue */);
+			bottom:
+				adapted.extendValueY(static_cast<double>(location.getY()) + 1 + entity.getBoundingBox().getTop() - position.getY() /* + EpsilonValue */);
 				currentRest.strictSelect((rest - adapted).setY(0));
 				if (adapted.lengthManhattan() >= velocity.lengthManhattan()) return false;
 				return velocity = adapted, true;
@@ -81,7 +113,7 @@ public:
 		return false;
 	}
 
-	virtual Vector<RenderableString> getDescription() const { return Vector{L"\\#ffee0000<UnknownBlock>"_renderable}; }
+	[[nodiscard]] virtual Vector<RenderableString> getDescription() const { return Vector{L"\\#ffee0000<UnknownBlock>"_renderable}; }
 	virtual bool checkEntityOnGround(Entity& entity) const { return dEquals(entity.getLocation().getY() + entity.getBoundingBox().getBottom(), static_cast<double>(location.getY())); }
 };
 
@@ -95,7 +127,7 @@ public:
 	void tick() noexcept(false) override {}
 	void setColor(const unsigned int color) noexcept { this->color = color; }
 	static PureBarrierBlock* create(const BlockLocation& location) { return allocatedFor(new PureBarrierBlock(location)); }
-	Vector<RenderableString> getDescription() const override { return Vector{L"PureBarrierBlock"_renderable, RenderableString(L"- Color: \\#" + qwtowb16(color, 8) + L"#" + qwtowb16(color, 8))}; }
+	[[nodiscard]] Vector<RenderableString> getDescription() const override { return Vector{L"PureBarrierBlock"_renderable, RenderableString(L"- Color: \\#" + qwtowb16(color, 8) + L"#" + qwtowb16(color, 8))}; }
 };
 
 class TestBarrierBlock final : public Block {
@@ -108,11 +140,12 @@ public:
 
 	bool adaptEntityVelocity(Entity& entity, const Vector2D& position, Vector2D& velocity, const Vector2D& rest, Vector2D& currentRest, const CollidingSide side) const override {
 		Logger.trace(getLocation().toString() + L" adapting velocity");
+		Logger.trace(side.toString());
 		return Block::adaptEntityVelocity(entity, position, velocity, rest, currentRest, side);
 	}
 
 	static TestBarrierBlock* create(const BlockLocation& location) { return allocatedFor(new TestBarrierBlock(location)); }
-	Vector<RenderableString> getDescription() const override { return Vector{L"TestBarrierBlock"_renderable}; }
+	[[nodiscard]] Vector<RenderableString> getDescription() const override { return Vector{L"TestBarrierBlock"_renderable}; }
 };
 
 class TimedBarrierBlock final : public Block {
@@ -125,11 +158,6 @@ public:
 	void render(double tickDelta, QWORD tickRendering) const noexcept override;
 	void tick() noexcept(false) override;
 
-	bool adaptEntityVelocity(Entity& entity, const Vector2D& position, Vector2D& velocity, const Vector2D& rest, Vector2D& currentRest, const CollidingSide side) const override {
-		Logger.trace(getLocation().toString() + L" adapting velocity");
-		return Block::adaptEntityVelocity(entity, position, velocity, rest, currentRest, side);
-	}
-
 	static TimedBarrierBlock* create(const BlockLocation& location) { return allocatedFor(new TimedBarrierBlock(location)); }
-	Vector<RenderableString> getDescription() const override { return Vector{L"TimedBarrierBlock"_renderable, RenderableString(L"- timeLeft: " + std::to_wstring(time))}; }
+	[[nodiscard]] Vector<RenderableString> getDescription() const override { return Vector{L"TimedBarrierBlock"_renderable, RenderableString(L"- timeLeft: " + std::to_wstring(time))}; }
 };

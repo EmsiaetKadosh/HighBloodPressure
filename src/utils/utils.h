@@ -238,12 +238,11 @@ inline NanoDuration getRunTime() noexcept {
 //
 // StackTrace
 //
-inline void printStackTrace(const std::stacktrace& stacktrace, int maxCount = 5, const int type = 0) noexcept {
-	if (!maxCount) return;
+
+inline String stacktraceString(const std::stacktrace& stacktrace, unsigned int maxCount = 5, const int type = 0) noexcept {
+	if (!maxCount) return L"null";
 	std::wstringstream ss;
 	ss << L"Stacktrace:";
-	const bool flag = maxCount < 0;
-	if (flag) maxCount = -maxCount;
 	if (type)
 		for (const auto& entry : stacktrace) {
 			ss << L"\n        Calling " << atow(entry.description().c_str()) << L" #" << entry.native_handle();
@@ -256,14 +255,22 @@ inline void printStackTrace(const std::stacktrace& stacktrace, int maxCount = 5,
 			if (const std::string str = entry.source_file(); !str.empty()) ss << L" @ " << atow(entry.source_file().c_str()) << L":" << entry.source_line();
 			if (!--maxCount) break;
 		}
-	if (flag) Logger.error(ss.str());
-	else Logger.trace(ss.str());
+	return ss.str();
 }
 
-inline void printStackTrace(const unsigned int skip = 0, const int maxCount = 5, const int type = 0) {
+inline void printStacktrace(const std::stacktrace& stacktrace, int maxCount = 5, const int type = 0) noexcept {
+	if (!maxCount) return;
+	const bool flag = maxCount < 0;
+	if (flag) maxCount = -maxCount;
+	String&& str = stacktraceString(stacktrace, maxCount, type);
+	if (flag) Logger.error(str);
+	else Logger.trace(str);
+}
+
+inline void printStacktrace(const unsigned int skip = 0, const int maxCount = 5, const int type = 0) {
 	if (!maxCount) return;
 	const std::stacktrace stack = std::stacktrace::current(1 + skip);
-	printStackTrace(stack, maxCount, type);
+	printStacktrace(stack, maxCount, type);
 }
 
 //
@@ -295,19 +302,32 @@ public:
 class $LimitedAccess::AtomicStorageBase {
 	mutable Boolean atomicFlag = false;
 	mutable bool atomicActiveFlag = true;
+	mutable bool longWaiting = false;
 
 protected:
+	mutable bool doPrint = true;
 	virtual ~AtomicStorageBase() { atomicActiveFlag = false; }
 
 public:
-	void atomicAcquire() const noexcept {
+	void atomicAcquire(const bool isLong = false) const noexcept {
 		bool expected;
-		while (expected = false, atomicActiveFlag && !atomicFlag.compare_exchange_strong(expected, true));
+		unsigned int spinCount = 0;
+		while (expected = false, atomicActiveFlag && !atomicFlag.compare_exchange_strong(expected, true))
+			// if (++spinCount)
+			++spinCount,
+				std::this_thread::sleep_for(std::chrono::microseconds(1));
+		// std::this_thread::yield();
+		// else if (spinCount < 100) std::this_thread::yield();
+		// else std::this_thread::sleep_for(std::chrono::microseconds(1));
+		// else std::this_thread::yield();
+		const bool lw = longWaiting;
+		longWaiting = isLong;
+		if (doPrint && spinCount) Logger.trace(Logger.of(lw ? L"long" : L"short", L"atomicAcquired for", spinCount, L"times"));
 	}
 
-	void atomicRelease() const noexcept {
+	void atomicRelease(const bool isLong = false) const noexcept {
 		bool expected;
-		while (expected = true, atomicActiveFlag && !atomicFlag.compare_exchange_strong(expected, false));
+		while (expected = true, atomicActiveFlag && !atomicFlag.compare_exchange_strong(expected, false)) std::this_thread::sleep_for(std::chrono::microseconds(100)), Logger.error(L"atomicRelease awaits??");
 	}
 
 	bool atomicActive() const noexcept { return atomicActiveFlag; }
@@ -320,6 +340,12 @@ public:
  */
 struct AtomicStorage : $LimitedAccess::AtomicStorageBase {
 	AtomicStorage() = default;
+
+	AtomicStorage(const bool doPrint) {
+		this->doPrint = doPrint;
+		this->doPrint = false;
+	}
+
 	~AtomicStorage() noexcept override = default;
 };
 
@@ -329,3 +355,36 @@ inline AtomicGuard::AtomicGuard(const $LimitedAccess::AtomicStorageBase* storage
 }
 
 inline AtomicGuard::~AtomicGuard() noexcept { if (storage && storage->atomicActive() && storage->atomicAcquired()) storage->atomicRelease(); }
+
+//
+// Function Wrapper: Functional::andThen
+//
+
+class Functional {
+	Vector<Function<void()>> tasks;
+
+public:
+	Functional() noexcept = default;
+	Functional(const Function<void()>& function) noexcept { tasks.emplace_back(function); }
+	Functional(Function<void()>&& function) noexcept { tasks.emplace_back(std::move(function)); }
+	Functional(const Functional& functional) = default;
+	Functional(Functional&& other) = default;
+	Functional& operator=(const Functional& other) = default;
+	Functional& operator=(Functional&& other) = default;
+	~Functional() noexcept = default;
+
+	Functional& then(const Function<void()>& next) { return tasks.emplace_back(next), *this; }
+	Functional& then(Function<void()>&& next) { return tasks.emplace_back(std::move(next)), *this; }
+	void run() const { for (const auto& action : tasks) action(); }
+	void operator()() const { run(); }
+
+	/**
+	 * @brief 创建一个Functional对象，按序执行传入参数
+	 */
+	template <typename... F> requires ((std::same_as<F, const Function<void()>&> || std::same_as<F, Function<void()>&&>) && ...)
+	[[nodiscard]] static Functional of(F&&... functions) {
+		Functional ret;
+		(ret.then(std::forward<F>(functions)), ...);
+		return ret;
+	}
+};

@@ -31,21 +31,21 @@ public:
 	}
 
 	void render(const double tickDelta, const QWORD tickRendering) const noexcept override {
-		blockGuard.atomicAcquire();
+		blockGuard.atomicAcquire(true);
 		for (const auto& [location, block] : blocks) block->render(tickDelta, tickRendering);
-		blockGuard.atomicRelease();
-		entityGuard.atomicAcquire();
+		blockGuard.atomicRelease(true);
+		entityGuard.atomicAcquire(true);
 		for (const auto& [id, entity] : entities) entity->render(tickDelta, tickRendering);
-		entityGuard.atomicRelease();
+		entityGuard.atomicRelease(true);
 		for (const auto& [location, block] : blocks) block->renderShadow();
 	}
 
 	virtual int addEntity(Entity* entity, const WorldTransportReason reason) noexcept {
 		if (!entity) Failed();
 		if (!entity->idEntity) Failed();
+		if (!reason.isEntityReason()) Failed();
 		if (entity->momentum.getLocation().getWorld()) Failed();
 		if (entity->world) Failed();
-		if (!reason.isEntityReason()) Failed();
 		entity->onEnterWorld(this, reason);
 		entity->changeWorld(idWorld);
 		entity->world = this;
@@ -58,10 +58,10 @@ public:
 	virtual int removeEntity(Entity* entity, const WorldTransportReason reason) noexcept {
 		if (!entity) Failed();
 		if (!entity->idEntity) Failed();
+		if (!reason.isEntityReason()) Failed();
 		entityGuard.atomicAcquire();
 		if (!entities.erase(entity->idEntity)) Failed();
 		entityGuard.atomicRelease();
-		if (!reason.isEntityReason()) Failed();
 		entity->onExitWorld(this, reason);
 		entity->changeWorld(idWorld);
 		entity->world = nullptr;
@@ -70,10 +70,10 @@ public:
 
 	virtual int addBlock(Block* block, const WorldTransportReason reason) noexcept {
 		if (!block) Failed();
+		if (!reason.isBlockReason()) Failed();
 		if (block->getLocation().getWorld()) Failed();
 		if (block->world) Failed();
 		if (blocks.contains(block->getLocation())) Failed();
-		if (!reason.isBlockReason()) Failed();
 		blockGuard.atomicAcquire();
 		blocks.emplace(block->getLocation(), block);
 		blockGuard.atomicRelease();
@@ -84,12 +84,24 @@ public:
 	}
 
 	virtual int removeBlock(Block* block, const WorldTransportReason reason) noexcept {
-		if (!block) Failed();
-		if (block->getLocation().getWorld() != idWorld) Failed();
+		if (!block) {
+			Logger.warn(L"block is nullptr");
+			Failed();
+		}
+		if (!reason.isBlockReason()) {
+			Logger.warn(L"reason is not BlockReason: " + reason.toString());
+			Failed();
+		}
+		if (block->getLocation().getWorld() != idWorld) {
+			Logger.warn(L"unmatched idWorld: " + std::to_wstring(block->getLocation().getWorld()) + L" but expected " + std::to_wstring(idWorld));
+			Failed();
+		}
 		blockGuard.atomicAcquire();
-		if (!blocks.erase(block->getLocation())) Failed();
+		if (!blocks.erase(block->getLocation())) {
+			Logger.warn(L"no block was removed");
+			Failed();
+		}
 		blockGuard.atomicRelease();
-		if (!reason.isBlockReason()) Failed();
 		block->onExitWorld(this, reason);
 		block->location.setWorld(0);
 		block->world = nullptr;
@@ -117,24 +129,7 @@ public:
 		return it->second;
 	}
 
-	virtual void onRemove() noexcept(false) {
-		// Entity不需要再此处删除，交给EntityManager管理
-		for (auto& [id, entity] : entities) {
-			entity->onExitWorld(this, WorldTransportReason::WorldCollapse);
-			entity->changeWorld(0);
-			entity->world = nullptr;
-		}
-		for (auto& [location, block] : blocks) {
-			block->onExitWorld(this, WorldTransportReason::WorldCollapse);
-			block->location.setWorld(0);
-			block->world = nullptr;
-			block->onRemove();
-		}
-		gc.submit<World>(this);
-		entities.clear();
-		blocks.clear();
-		Logger.debug(L"World::onRemove() called");
-	}
+	virtual void onRemove() noexcept(false);
 
 	/**
 	 * @brief 在这个世界中适应一个实体的速度。应当仅在Entity::tick中调用。如果需要别处调用，请注意调用
@@ -158,6 +153,14 @@ public:
 	 * @param direction 移动方向
 	 */
 	[[nodiscard]] BoundingBoxCollideResults boundingBoxCollideBlocks(const BoundingBox& boundingBox, const Location& location, const Vector2D& direction) const noexcept(false);
+
+	/**
+	 * @brief 获取实体所受的力场。通常来说是重力场，但考虑到后续一些扩展性，这里需要传入一个实体（包括类型、位置）动态获取力场。
+	 * @param entity 探测的实体
+	 * @param withGravity 实体是否需要携带重力。考虑有时实体不需要重力判断，或者处于失重状态
+	 * @returns 力场，包括重力
+	 */
+	[[nodiscard]] virtual Vector2D getForceField(Entity& entity, const bool withGravity = true) const noexcept { return { 0, withGravity ? 0.02 : 0 }; }
 };
 
 class WorldManager {
@@ -165,8 +168,9 @@ class WorldManager {
 	WorldID nextID = 0;
 	Map<WorldID, World*> worlds;
 	World* current = nullptr;
-	WorldManager() = default;
+	KeyBinding& speedTweaker = *interactManager.getKeyBindingManager().getRegion(L"world").getBinding(L"speed_tweaker");
 	using IterWorld = Map<WorldID, World*>::const_iterator;
+	WorldManager() = default;
 
 	~WorldManager() {
 		Logger.debug(L"~WorldManager() called");

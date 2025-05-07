@@ -109,9 +109,9 @@ public:
 	};
 
 private:
-	List<StringConfig> configs;
-	using Iterator = List<StringConfig>::iterator;
-	using ConstIterator = List<StringConfig>::const_iterator;
+	Vector<StringConfig> configs;
+	using Iterator = Vector<StringConfig>::iterator;
+	using ConstIterator = Vector<StringConfig>::const_iterator;
 
 public:
 	RenderableString(const String& string): RenderableString(string.c_str(), string.length()) {}
@@ -380,14 +380,14 @@ protected:
 	IFonts(const FontID id, const String& name, const double heightModifier, const double yOffset, const long escapement, const long orientation, const bool adaptAllSize) : name{name}, yOffset(yOffset), heightModifier(heightModifier), height(static_cast<long>(interactSettings.actual.fontHeight * heightModifier)), escapement(escapement), orientation(orientation), yOffsetPx(static_cast<long>(yOffset * height)), id(id), adaptAllSize(adaptAllSize) {}
 	IFonts(const FontID id, String&& name, const double heightModifier, const double yOffset, const long escapement, const long orientation, const bool adaptAllSize) : name{std::move(name)}, yOffset(yOffset), heightModifier(heightModifier), height(static_cast<long>(interactSettings.actual.fontHeight * heightModifier)), escapement(escapement), orientation(orientation), yOffsetPx(static_cast<long>(yOffset * height)), id(id), adaptAllSize(adaptAllSize) {}
 
-	[[nodiscard]] virtual int getWidth(const RenderableString::StringConfig& config) const = 0;
+	[[nodiscard]] virtual int getWidth(const RenderableString::StringConfig& config) const noexcept = 0;
 
 public:
 	IFonts(const IFonts&) = default;
 	IFonts(IFonts&&) = default;
 	virtual ~IFonts() = default;
-	virtual void draw(const RenderableString& text, int x, int y, unsigned int color = 0xffeeeeee) const = 0;
-	virtual void drawCenter(const RenderableString& text, int x, int y, int w, int h, unsigned int color = 0xffeeeeee) const = 0;
+	virtual void draw(const RenderableString& text, int x, int y, unsigned int color = 0xffeeeeee) const noexcept = 0;
+	virtual void drawCenter(const RenderableString& text, int x, int y, int w, int h, unsigned int color = 0xffeeeeee) const noexcept = 0;
 	[[nodiscard]] int getHeight() const noexcept { return height; }
 	[[nodiscard]] int getEscapement() const noexcept { return escapement; }
 	[[nodiscard]] int getOrientation() const noexcept { return orientation; }
@@ -395,7 +395,7 @@ public:
 };
 
 class GdiFont final : public IFonts {
-	[[nodiscard]] HFONT tryCreate(const RenderableString::StringConfig& config) const {
+	[[nodiscard]] HFONT tryCreate(const RenderableString::StringConfig& config) const noexcept {
 		if (const auto iter = fonts.find(config.style); iter != fonts.end()) return iter->second;
 		LOGFONTW f{
 			.lfHeight = height,
@@ -421,10 +421,10 @@ class GdiFont final : public IFonts {
 
 protected:
 
-	[[nodiscard]] int getWidth(const RenderableString::StringConfig& config) const override;
-	[[nodiscard]] int drawSingle(const RenderableString::StringConfig& config, int x, int y, unsigned int defaultColor) const;
-	void drawDirect(const RenderableString::StringConfig& config, int x, int y, unsigned int defaultColor) const;
-	void clear() const;
+	[[nodiscard]] int getWidth(const RenderableString::StringConfig& config) const noexcept override;
+	[[nodiscard]] int drawSingle(const RenderableString::StringConfig& config, int x, int y, unsigned int defaultColor) const noexcept;
+	void drawDirect(const RenderableString::StringConfig& config, int x, int y, unsigned int defaultColor) const noexcept;
+	void clear() const noexcept;
 	friend class GdiFontManager;
 	friend class RenderableString;
 	mutable Map<FontStyle, HFONT> fonts{};
@@ -442,8 +442,8 @@ public:
 		if (!fonts.empty()) Logger.warn(L"Font is not successfully cleared when ~Font() called: " + name);
 	}
 
-	void draw(const RenderableString& text, int x, int y, unsigned int color = 0xffeeeeee) const override;
-	void drawCenter(const RenderableString& text, int x, int y, int w, int h, unsigned int color = 0xffeeeeee) const override;
+	void draw(const RenderableString& text, int x, int y, unsigned int color = 0xffeeeeee) const noexcept override;
+	void drawCenter(const RenderableString& text, int x, int y, int w, int h, unsigned int color = 0xffeeeeee) const noexcept override;
 };
 
 class IFontManager {
@@ -464,8 +464,8 @@ public:
 	virtual void resize(int width, int height) = 0;
 	virtual IFonts& newFont(const String& name, double heightModifier, double yOffset, bool adaptAllSize, long escapement, long orientation) = 0;
 	virtual IFonts& newFont(String&& name, double heightModifier, double yOffset, bool adaptAllSize, long escapement, long orientation) = 0;
-	[[nodiscard]] virtual IFonts& getDefault() const = 0;
-	[[nodiscard]] virtual IFonts& get(FontID id) const = 0;
+	[[nodiscard]] virtual IFonts& getDefault() const noexcept = 0;
+	[[nodiscard]] virtual IFonts& get(FontID id) const noexcept = 0;
 };
 
 class GdiFontManager final : public IFontManager {

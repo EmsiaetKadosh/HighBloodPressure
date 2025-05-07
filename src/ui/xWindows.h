@@ -32,10 +32,15 @@ class StartWindow final : public Window {
 
 public:
 	static StartWindow* create() noexcept { return allocatedFor(new StartWindow()); }
-	void onClose() override { pop(); }
 
 	void render(const double tickDelta, QWORD tickRendering) const noexcept override {
 		renderer.getFontManager().getDefault().drawCenter(title.getRenderableString(), 0, 0, renderer.getWidth(), renderer.getHeight());
 		Window::render(tickDelta, tickRendering);
+	}
+};
+
+class SettingsWindow final : public Window {
+public:
+	SettingsWindow() {
 	}
 };

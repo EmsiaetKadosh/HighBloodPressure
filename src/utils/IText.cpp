@@ -32,7 +32,7 @@ int RenderableString::getWidth(RenderConfig* renderConfigs, const FontID default
 	return width;
 }
 
-int GdiFont::drawSingle(const RenderableString::StringConfig& config, const int x, const int y, const unsigned int defaultColor) const {
+int GdiFont::drawSingle(const RenderableString::StringConfig& config, const int x, const int y, const unsigned int defaultColor) const noexcept {
 	SelectObject(renderer->canvasDC, tryCreate(config));
 	RECT rect{
 		.left = x,
@@ -50,7 +50,7 @@ int GdiFont::drawSingle(const RenderableString::StringConfig& config, const int 
 GdiFont::GdiFont(IRenderer* renderer, const FontID id, const String& name, const double heightModifier, const double yOffset, const long escapement, const long orientation, const bool adaptAllSize): IFonts(id, name, heightModifier, yOffset, escapement, orientation, adaptAllSize), renderer(assert_dynamic_cast<GdiRenderer*>(renderer)) {}
 GdiFont::GdiFont(IRenderer* renderer, const FontID id, String&& name, const double heightModifier, const double yOffset, const long escapement, const long orientation, const bool adaptAllSize): IFonts(id, std::move(name), heightModifier, yOffset, escapement, orientation, adaptAllSize), renderer(assert_dynamic_cast<GdiRenderer*>(renderer)) {}
 
-void GdiFont::drawDirect(const RenderableString::StringConfig& config, const int x, const int y, const unsigned int defaultColor) const {
+void GdiFont::drawDirect(const RenderableString::StringConfig& config, const int x, const int y, const unsigned int defaultColor) const noexcept {
 	SelectObject(renderer->canvasDC, tryCreate(config));
 	RECT rect{
 		.left = x,
@@ -63,12 +63,12 @@ void GdiFont::drawDirect(const RenderableString::StringConfig& config, const int
 	DrawTextW(renderer->canvasDC, config.text.c_str(), static_cast<int>(config.text.length()), &rect, DT_SINGLELINE | DT_NOCLIP);
 }
 
-void GdiFont::clear() const {
+void GdiFont::clear() const noexcept {
 	for (const auto& [_, fnt] : fonts) renderer->deleteObject(fnt);
 	fonts.clear();
 }
 
-void GdiFont::draw(const RenderableString& text, int x, const int y, const unsigned int color) const {
+void GdiFont::draw(const RenderableString& text, int x, const int y, const unsigned int color) const noexcept {
 	const COLORREF defaultColor = renderer->changeColorFormat(color);
 	for (const RenderableString::StringConfig& config : text.configs) {
 		if (config.idFont) {
@@ -90,7 +90,7 @@ void GdiFont::draw(const RenderableString& text, int x, const int y, const unsig
 	}
 }
 
-void GdiFont::drawCenter(const RenderableString& text, int x, int y, const int w, const int h, const unsigned int color) const {
+void GdiFont::drawCenter(const RenderableString& text, int x, int y, const int w, const int h, const unsigned int color) const noexcept {
 	const COLORREF defaultColor = renderer->changeColorFormat(color);
 	using RenderConfig = RenderableString::RenderConfig;
 	const QWORD size = text.configs.size();
@@ -105,7 +105,7 @@ void GdiFont::drawCenter(const RenderableString& text, int x, int y, const int w
 	delete[] deallocating(configs);
 }
 
-int GdiFont::getWidth(const RenderableString::StringConfig& config) const {
+int GdiFont::getWidth(const RenderableString::StringConfig& config) const noexcept {
 	const HFONT font = tryCreate(config);
 	RECT rect{};
 	SelectObject(renderer->assistDC, font);

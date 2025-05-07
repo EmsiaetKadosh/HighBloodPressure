@@ -25,6 +25,10 @@ void Camera::render(const double tickDelta, const QWORD tickRendering) noexcept 
 		newRelative.setY(nRangeSmooth(newRelative.getY(), -selector.getY(), selector.getY()));
 		Vector2D movement = newRelative - originalRelative;
 		movement.multiply(1 - interactSettings.constants.smoothCamera);
+		if (selector.lengthManhattan() != 0) {
+			const double eff = nRangeSmooth(originalRelative.length() / selector.length(), -0.6, 1.3);
+			movement.multiply(eff);
+		}
 		position = targetPosition + originalRelative + movement;
 	}
 }
@@ -33,6 +37,8 @@ void Camera::setTargetEntity(Entity* target) noexcept {
 	updateTick = game.getTick();
 	targeting = target;
 }
+
+int IRenderer::getClientHeight() const noexcept { return game.getCaption().isHidden() ? windowHeight : windowHeight - interactSettings.actual.captionHeight; }
 
 void GdiRenderer::gameStartRender() noexcept {
 	isRendering = true;
@@ -78,6 +84,7 @@ void GdiRenderer::finalize(const bool isRenderThread) noexcept {
 }
 
 void GdiRenderer::resize(const int width, const int height) noexcept(false) {
+	Logger.info(L"resize called");
 	if (refreshedHDC == -1) { // 尚未Post请求
 		lastPostRefreshTime = getCurrentTime();
 		if (!PostMessageW(MainWindowHandle, WM_APP_REQUESTHDC, 0, 0)) {
@@ -125,16 +132,13 @@ void GdiRenderer::resize(const int width, const int height) noexcept(false) {
 		}
 	} else Logger.debug(L"Successfully resized bitmap");
 	if (flag) {
-		interactSettings.setUiScale(static_cast<double>(height) / 2160.);
+		setSystemScale();
 		game.handleResize();
 		fontManager->resize(width, height);
 	}
 }
 
-void GdiRenderer::tick() noexcept(false) {
-	mousePointingAtWorld = client2world(interactManager.getMouseX(), interactManager.getMouseY());
-	mousePointingAtBlock = mousePointingAtWorld;
-}
+void GdiRenderer::tick() noexcept(false) {}
 
 void GdiRenderer::resizeEnd() noexcept {
 	isResizing = false;
@@ -146,6 +150,8 @@ void GdiRenderer::resizeEnd() noexcept {
 }
 
 void GdiRenderer::renderMouseWorld() noexcept {
+	mousePointingAtWorld = client2world(interactManager.getMouseX(), interactManager.getMouseY());
+	mousePointingAtBlock = mousePointingAtWorld;
 	if (!interactManager.isInWindow()) return;
 	fillWorldBlock(mousePointingAtBlock, mousePointingAtFlash.adaptsColor(0x88ffffff, 0x88ff0000));
 	fillWorld(mousePointingAtWorld - Vector2D(10, 0.02), 20, 0.04, 0xffee0000);

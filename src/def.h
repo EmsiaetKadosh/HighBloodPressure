@@ -11,17 +11,18 @@
 
 #include <typeinfo>
 #include <functional>
-#include <thread>
-#include <iostream>
-#include <list>
-#include <string>
-#include <map>
-#include <chrono>
 #include <atomic>
+#include <mutex>
+#include <thread>
+#include <chrono>
+#include <iostream>
 #include <fstream>
-#include <sstream>
-#include <cmath>
+#include <sstream> // has string
+#include <list>
+#include <map>
 #include <set>
+#include <deque>
+#include <cmath>
 #include <filesystem>
 #include <random>
 #include <stacktrace>
@@ -33,6 +34,7 @@ using Thread = std::thread;
 using Time = std::chrono::time_point<std::chrono::system_clock>;
 using NanoDuration = std::chrono::duration<long long, std::nano>;
 using Boolean = std::atomic_bool;
+using Mutex = std::mutex;
 template <typename K, typename V, typename Cmp = std::less<K>, typename Alloc = std::allocator<std::pair<const K, V>>>
 using Map = std::map<K, V, Cmp, Alloc>;
 template <typename T, typename Comparator = std::less<T>, typename Allocator = std::allocator<T>>
@@ -41,6 +43,8 @@ template <typename T, typename Allocator = std::allocator<T>>
 using List = std::list<T, Allocator>;
 template <typename T, typename Allocator = std::allocator<T>>
 using Vector = std::vector<T, Allocator>;
+template <typename T, typename Allocator = std::allocator<T>>
+using Deque = std::deque<T, Allocator>;
 template <typename F>
 using Function = std::function<F>;
 template <typename T>
@@ -132,40 +136,58 @@ void checkAllocation(const void* value) noexcept(false);
 inline String ptrtow(QWORD value);
 
 #if defined __CARLBEKS_DEBUG__ || defined __CARLBEKS_MEMORY__
-namespace $LimitedAccess {
-	void printAllocate(void* value, std::size_t size, const String&);
-	void printDeallocate(void* value, std::size_t size, const String&);
-	void printDeallocateWarning(void* value, const String& msg);
-}
-
 [[noreturn]] void unreachable() noexcept(false);
 extern String atow(const char* chars);
 
-template <typename T>
-T* allocatedFor$(T* value, const String& msg = L"", std::size_t size = sizeof(T)) {
-	requireNonnull(value);
-	bool expect = false;
-	while (!$LimitedAccess::memoryManager.acquiring.compare_exchange_strong(expect, true)) expect = false;
-	const auto& k = $LimitedAccess::memoryManager.allocated.emplace(value, $LimitedAccess::MemoryManager::MemoryInfo{L"[" + atow(typeid(T).name()) + L"] " + msg, size}).first;
+namespace $LimitedAccess {
 #if __CARLBEKS_MEMORY__ > 2
-	$LimitedUse::printAllocate(value, k->second.size, k->second.msg);
+	void printAllocate(void* value, std::size_t size, const String&);
 #endif
-	$LimitedAccess::memoryManager.acquiring.store(false);
-	return value;
-}
+#if __CARLBEKS_MEMORY__ > 3
+	void printDeallocate(void* value, std::size_t size, const String&);
+#endif
+	void printDeallocateWarning(void* value, const String& msg);
 
-template <typename T>
-T* deallocating$(T* value, const String& stack) {
-	bool expect = false;
-	while (!$LimitedAccess::memoryManager.acquiring.compare_exchange_strong(expect, true)) expect = false;
+	template <typename T>
+	T* allocatedFor$(T* value, const String& msg = L"", std::size_t size = sizeof(T)) {
+		requireNonnull(value);
+		bool expect = false;
+		while (!memoryManager.acquiring.compare_exchange_strong(expect, true)) expect = false;
+		const auto& k = memoryManager.allocated.emplace(value, MemoryManager::MemoryInfo{L"[" + atow(typeid(T).name()) + L"] " + msg, size}).first;
 #if __CARLBEKS_MEMORY__ > 2
-	const $LimitedUse::MemoryManager::MemoryInfo* info = nullptr;
-	if ($LimitedUse::memoryManager.allocated.contains(value)) info = &$LimitedUse::memoryManager.allocated.at(value);
-	$LimitedUse::printDeallocate(value, info ? info->size : 0, info ? info->msg : L"???");
+		printAllocate(value, k->second.size, k->second.msg);
 #endif
-	if (value) if (!$LimitedAccess::memoryManager.allocated.erase(value)) $LimitedAccess::printDeallocateWarning(value, L"value not recorded" + stack);
-	$LimitedAccess::memoryManager.acquiring.store(false);
-	return value;
+		memoryManager.acquiring.store(false);
+		return value;
+	}
+
+	template <typename T>
+	T* deallocating$(
+		T* value
+#if __CARLBEKS_MEMORY__ > 1
+		, const String& stack
+#endif
+	) {
+		bool expect = false;
+		while (!memoryManager.acquiring.compare_exchange_strong(expect, true)) expect = false;
+#if __CARLBEKS_MEMORY__ > 2
+		const MemoryManager::MemoryInfo* info = nullptr;
+		if (memoryManager.allocated.contains(value)) info = &memoryManager.allocated.at(value);
+		printDeallocate(value, info ? info->size : 0, info ? info->msg : L"???");
+#endif
+		if (value)
+			if (!memoryManager.allocated.erase(value))
+				printDeallocateWarning(
+					value,
+#if __CARLBEKS_MEMORY__ > 1
+					stack.empty() ? L"value not recorded" : L"value not recorded\n    " + stack
+#else
+					L"value not recorded"
+#endif
+				);
+		memoryManager.acquiring.store(false);
+		return value;
+	}
 }
 
 #ifndef __FUNCSIG__
@@ -176,14 +198,16 @@ T* deallocating$(T* value, const String& stack) {
 #endif
 
 #if __CARLBEKS_MEMORY__ > 3
-#define allocatedFor(val, ...) allocatedFor$(val, L"\n    From " __FUNCSIG__PACK__ L"\n    At   " __FILE__ ":" _STL_STRINGIZE(__LINE__) __VA_OPT__(,) __VA_ARGS__)
+#define allocatedFor(val, ...) $LimitedAccess::allocatedFor$(val, L"From " __FUNCSIG__PACK__ L"\n    At   " __FILE__ ":" _STL_STRINGIZE(__LINE__) __VA_OPT__(,) __VA_ARGS__)
 #else
-#define allocatedFor(val, ...) allocatedFor$(val, L"" __VA_OPT__(,) __VA_ARGS__)
+#define allocatedFor(val, ...) $LimitedAccess::allocatedFor$(val, L"" __VA_OPT__(,) __VA_ARGS__)
 #endif
 #if __CARLBEKS_MEMORY__ > 1
-#define deallocating(val) deallocating$(val, L"\n    From " __FUNCSIG__PACK__ L"\n    At   " __FILE__ ":" _STL_STRINGIZE(__LINE__))
+#define deallocating(val) $LimitedAccess::deallocating$(val, L"From " __FUNCSIG__PACK__ L"\n    At   " __FILE__ ":" _STL_STRINGIZE(__LINE__))
+#define deallocating_message(val, msg) $LimitedAccess::deallocating$(val, msg)
 #else
-#define deallocating(val) deallocating$(val)
+#define deallocating(val) $LimitedAccess::deallocating$(val)
+#define deallocating_message(val, msg) deallocating(val)
 #endif
 
 #else
@@ -191,8 +215,19 @@ T* deallocating$(T* value, const String& stack) {
 #define deallocating(val) val
 #endif
 
+namespace $LimitedAccess {
+	template <typename T>
+	struct Annotations {
+		[[carlbeks::nonnull]] T* nonnull_ptr;
+		[[carlbeks::nullable]] T* nullable_ptr;
+		[[carlbeks::defineat("str: file")]] T any_declaration;
+		[[carlbeks::predecl]] T any_declaration_without_definition;
+		[[carlbeks::optimize]] T any_function_can_optimize;
+	};
+}
+
 template <TypeName Base>
-class ObjectHolder {
+class Container {
 	Base* value;
 	bool hasValue;
 	char padding[7]{};
@@ -201,39 +236,30 @@ public:
 	/**
 	 * 用于延迟初始化。
 	 */
-	ObjectHolder() : value(nullptr), hasValue(false) {}
-
-	ObjectHolder(Base* value) : value(value), hasValue(false) {}
+	Container() : value(nullptr), hasValue(false) {}
+	Container(Base* value) : value(value), hasValue(false) {}
+	Container(const Container& other) noexcept: value(other.value), hasValue(false) {}
+	Container(Container&& other) noexcept: value(other.value), hasValue(other.hasValue) { other.value = nullptr, other.hasValue = false; }
 
 	template <NewCopyable T> requires (std::is_base_of_v<Base, T> || std::is_same_v<Base, T>) && TypeName<T>
-	ObjectHolder(const T& value) : value(allocatedFor(new T(value))), hasValue(true) {}
+	Container(const T& value) : value(allocatedFor(new T(value))), hasValue(true) {}
 
 	template <NewMoveable T> requires (std::is_base_of_v<Base, T> || std::is_same_v<Base, T>) && TypeName<T>
-	ObjectHolder(T&& value) : value(allocatedFor(new T(std::forward<T>(value)))), hasValue(true) {}
+	Container(T&& value) : value(allocatedFor(new T(std::forward<T>(value)))), hasValue(true) {}
 
-	ObjectHolder(const ObjectHolder& other) noexcept: value(other.value), hasValue(false) {}
+	template <TypeName T, typename... Args> requires (std::is_base_of_v<Base, T> || std::is_same_v<Base, T>)
+	Container(T** out, Args&&... args) : value(allocatedFor(new T(std::forward<Args>(args)...))), hasValue(true) { if (out) *out = static_cast<T*>(value); }
 
-	ObjectHolder(ObjectHolder&& other) noexcept: value(other.value), hasValue(other.hasValue) {
-		other.value = nullptr;
-		other.hasValue = false;
+	~Container() {
+		if (hasValue) delete deallocating(value);
+		value = nullptr;
 	}
-
-	template <NewCopyable T> requires std::is_base_of_v<Base, T> && TypeName<T>
-	void set(const T& value);
-
-	template <NewMoveable T> requires std::is_base_of_v<Base, T> && TypeName<T>
-	void set(T&& value);
 
 	template <TypeName T, typename... ConstructorParams>
 	T& allocate(ConstructorParams&&... params) {
 		if (hasValue) delete deallocating(value);
 		value = allocatedFor(new T(std::forward<ConstructorParams>(params)...));
 		return *value;
-	}
-
-	~ObjectHolder() {
-		if (hasValue) delete deallocating(value);
-		value = nullptr;
 	}
 
 	[[nodiscard]] Base* operator->() noexcept(false) {
@@ -273,82 +299,9 @@ public:
 	[[nodiscard]] bool isManager() const noexcept { return hasValue; }
 
 	template <typename T>
-	ObjectHolder<T> referenceof(const T& other) {
-		ObjectHolder ret{};
+	static Container<T> referenceof(const T& other) {
+		Container ret{};
 		ret.value = &other;
 		return ret;
-	}
-};
-
-template <TypeName Base>
-class SynchronizedHolder {
-	mutable Base* newValue = nullptr;
-	mutable Base* value = nullptr;
-	mutable bool isOk = false;
-
-public:
-	SynchronizedHolder() = default;
-
-	~SynchronizedHolder() {
-		if (newValue == value) { if (value) delete deallocating(value); }
-		else {
-			if (newValue) delete deallocating(newValue);
-			if (value) delete deallocating(value);
-		}
-		newValue = nullptr;
-		value = nullptr;
-	}
-
-
-	template <NewCopyable T> requires std::is_base_of_v<Base, T> && TypeName<T>
-	void setNew(const Base& other) noexcept {
-		isOk = false;
-		if (newValue && newValue != value) deleteNew();
-		newValue = allocatedFor(new T(other));
-	}
-
-	template <NewMoveable T> requires std::is_base_of_v<Base, T> && TypeName<T>
-	void setNew(T&& val) noexcept {
-		isOk = false;
-		if (newValue && newValue != value) deleteNew();
-		newValue = allocatedFor(new T(std::forward<T>(val)));
-	}
-
-	void ok() const noexcept { isOk = true; }
-
-	Base& get() const noexcept(false) {
-		requireNonnull(value);
-		return *value;
-	}
-
-	Base& getNew() const noexcept(false) {
-		requireNonnull(newValue); // 用于抛错
-		return *newValue;
-	}
-
-	Base* ptr() const noexcept { return value; }
-	Base* ptrNew() const noexcept { return newValue; }
-	Base* ptrs() const noexcept { return newValue ? newValue : value; }
-
-	void async() const noexcept {
-		if (newValue == value) return;
-		if (!isOk) return;
-		Base* nuv = newValue;
-		newValue = nullptr;
-		if (nuv) {
-			if (value && value != nuv) deleteOld();
-			value = nuv;
-		}
-	}
-
-private:
-	void deleteOld() const noexcept {
-		delete deallocating(value);
-		value = nullptr;
-	}
-
-	void deleteNew() const noexcept {
-		delete deallocating(newValue);
-		newValue = nullptr;
 	}
 };

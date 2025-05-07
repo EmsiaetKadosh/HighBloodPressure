@@ -16,6 +16,7 @@ if (CMAKE_CXX_COMPILER_ID STREQUAL "MSVC")
     add_compile_options(/execution-charset:utf-8)
 endif ()
 add_compile_options(/Zc:preprocessor)
+#add_compile_options(-Wall)
 
 include(CTest)
 enable_testing()
@@ -24,10 +25,16 @@ add_executable(${PROJECT_NAME}
         src/main.cpp
 
         src/def.cpp
+        # math
         src/utils/File.cpp
         src/utils/exception.cpp
+        # Chars
 
+        src/utils/gc.cpp
+        # utils
         src/utils/Task.cpp
+        # hbp
+        # Animation
 
         src/interact/InteractManager.cpp
         src/utils/IText.cpp
@@ -40,6 +47,8 @@ add_executable(${PROJECT_NAME}
 
         src/game/Game.cpp
 
+        # xWindows
+        # gameDef
         src/game/entity/Entity.cpp
         src/game/world/Block.cpp
         src/game/world/World.cpp
