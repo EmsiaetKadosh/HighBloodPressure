@@ -5,7 +5,6 @@
 #pragma once
 
 #include "..\def.h"
-#include "..\hbp.h"
 
 struct Keys {
 	enum Enum : unsigned char {
@@ -407,7 +406,7 @@ class KeyBindingManager {
 	Set<KeyRegionClass, LessKeyRegion> keyRegions;
 	Keys rebinding[8]{};
 
-	KeyBindingManager() { keyRegions.emplace(KeyRegionClass(L"global")); }
+	KeyBindingManager() { keyRegions.emplace(KeyRegionClass(L"main")); }
 
 public:
 	KeyRegion& registerRegion(String&& description) noexcept { return keyRegions.emplace(std::move(description)).first.operator*(); }
@@ -444,64 +443,23 @@ class InteractManager {
 	bool rebinding = false;
 	bool hovering = false;
 	bool useRawInput = false;
+	bool useIme = true;
 
 public:
-	void initialize() noexcept {
-		trackMouseEvent.hwndTrack = MainWindowHandle;
-		KeyRegion& world = keyBindings.registerRegion(L"world");
-		world.newBinding(L"move_left", Keys::A);
-		world.newBinding(L"move_right", Keys::D);
-		world.newBinding(L"move_jump", Keys::Space);
-		world.newBinding(L"move_dodge", Keys::LeftShift);
-		world.newBinding(L"pause", Keys::Escape);
-		world.newBinding(L"speed_tweaker", Keys::Tab);
-		KeyRegion& menu = keyBindings.registerRegion(L"menu");
-		menu.newBinding(L"quit", Keys::Escape);
-	}
-
-	void enableRawInput() noexcept {
-		useRawInput = true;
-		Keys::InnerLeftAlt = Keys::Raw_LeftAlt;
-		Keys::InnerRightAlt = Keys::Raw_RightAlt;
-		Keys::InnerLeftCtrl = Keys::Raw_LeftCtrl;
-		Keys::InnerRightCtrl = Keys::Raw_RightCtrl;
-		Keys::InnerLeftShift = Keys::Raw_LeftShift;
-		Keys::InnerRightShift = Keys::Raw_RightShift;
-	}
-
+	void initialize() noexcept;
 	InteractManager();
-
-	void update(const unsigned char keyCode, const bool isPressed) noexcept {
-		if (keyCode >= 256) return;
-		if (rebinding) {
-			rebindResult = keyCode;
-			return;
-		}
-		auto& status = keyStatus[keyCode];
-		if (!status.pressed) {
-			++status.pressTimes;
-			status.notDealt = true;
-		}
-		status.pressed = isPressed;
-	}
-
-
-	void mouseLeaveCaption() noexcept {
-		outsideWindow &= ~2;
-		hovering = false;
-	}
-
-	void mouseLeaveClient() noexcept {
-		outsideWindow &= ~1;
-		hovering = false;
-	}
-
+	void enableRawInput() noexcept;
+	void update(unsigned char keyCode, bool isPressed) noexcept;
+	void mouseLeaveCaption() noexcept;
+	void mouseLeaveClient() noexcept;
 	void updateMouse(int x, int y) noexcept;
 	void updateWheel(const int wheel) noexcept { mouseWheel += wheel; }
 	void mouseHover() noexcept { hovering = true; }
+	void setInputMethodEditor(bool focusing = false) noexcept;
 	[[nodiscard]] int getMouseX() const noexcept { return mouseX; }
 	[[nodiscard]] int getMouseY() const noexcept { return mouseY; }
 	[[nodiscard]] int getMouseWheel() const noexcept { return mouseWheel; }
+	[[nodiscard]] bool rawInputEnabled() const noexcept { return useRawInput; }
 	[[nodiscard]] bool isHovering() const noexcept { return hovering; }
 	[[nodiscard]] bool isInWindow() const noexcept { return outsideWindow; }
 	[[nodiscard]] bool isInSizeBox() const noexcept;
@@ -511,12 +469,7 @@ public:
 	[[nodiscard]] unsigned int /*MouseButtonCode*/ getMouseButtonCode() const noexcept;
 	[[nodiscard]] KeyStatus& getKey(const Keys keyCode) noexcept { return keyStatus[keyCode]; }
 	[[nodiscard]] KeyBindingManager& getKeyBindingManager() noexcept { return keyBindings; }
-
-	int dealMouseWheel() noexcept {
-		const int ret = mouseWheel;
-		mouseWheel = 0;
-		return ret;
-	}
+	int dealMouseWheel() noexcept;
 };
 
 inline InteractManager interactManager = InteractManager();
@@ -560,6 +513,7 @@ public:
 	 */
 	void setUiScale(double scale);
 	void setMapScale(double scale);
+	void setScreenScale(double scale);
 };
 
 inline InteractSettings interactSettings = InteractSettings();

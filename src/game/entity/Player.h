@@ -55,7 +55,7 @@ class Player final : public Entity {
 	void processKey() {
 		if (jump.isPressed()) {
 			if (jumpInterval) --jumpInterval;
-			else if (!game.options.autoJumpHighest || velocity.getY() >= 0 || jump.wasPressedThenDeal()) { // 这里是一个自动高跳的判断
+			else if (!game.options.operations.autoJumpHighest || velocity.getY() >= 0 || jump.wasPressedThenDeal()) { // 这里是一个自动高跳的判断
 				if (isOnGround()) accelerate.setY(-0.4);
 				else if (airJump == 2) velocity.setY(-0.25), accelerate.setY(0), --airJump;
 				else if (airJump == 1) {

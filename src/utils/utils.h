@@ -142,7 +142,7 @@ public:
 		tail.prev = &head;
 	}
 
-	virtual ~AnywhereEditableList() { for (AnywhereIterator<T, L> it = begin(); it != end(); ++it) {} }
+	virtual ~AnywhereEditableList() { for (auto& i : *this) i.pop(); }
 
 	int pushCopy(T* value) noexcept;
 	int pushThis(T* value) noexcept;
@@ -154,6 +154,7 @@ public:
 	[[nodiscard]] AnywhereIteratorEnd end() const noexcept { return {}; }
 	AnywhereEditable<T, L>* front() const noexcept { return head.next == &tail ? nullptr : head.next; }
 	AnywhereEditable<T, L>* back() const noexcept { return tail.prev == &head ? nullptr : tail.prev; }
+	operator bool() const noexcept { return head.next != &tail; }
 };
 
 template <typename T, typename L>
@@ -305,7 +306,7 @@ class $LimitedAccess::AtomicStorageBase {
 	mutable bool longWaiting = false;
 
 protected:
-	mutable bool doPrint = true;
+	mutable bool doPrint = false;
 	virtual ~AtomicStorageBase() { atomicActiveFlag = false; }
 
 public:
@@ -341,10 +342,7 @@ public:
 struct AtomicStorage : $LimitedAccess::AtomicStorageBase {
 	AtomicStorage() = default;
 
-	AtomicStorage(const bool doPrint) {
-		this->doPrint = doPrint;
-		this->doPrint = false;
-	}
+	AtomicStorage(const bool doPrint) { this->doPrint = doPrint; }
 
 	~AtomicStorage() noexcept override = default;
 };

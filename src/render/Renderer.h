@@ -7,12 +7,16 @@
 #include "..\def.h"
 #include "..\utils\math.h"
 #include "..\utils\exception.h"
+#include "..\utils\Chars.h"
+
 #include "..\utils\Task.h"
+#include "..\hbp.h"
 #include "..\game\Animation.h"
+
 #include "..\interact\InteractManager.h"
 #include "..\utils\IText.h"
 #include "..\game\world\Location.h"
-#include "..\utils\Chars.h"
+#include "TextureManager.h"
 
 class Game;
 
@@ -80,6 +84,10 @@ protected:
 	 * @brief 辅助函数，传递friend属性。用于在resize中设置uiScale和mapScale而不requireResize
 	 */
 	void setSystemScale() const noexcept { interactSettings.resizeSetSystemScale(nMin(static_cast<double>(windowWidth) / 3840.0, static_cast<double>(windowHeight) / 2160.0)); }
+	/**
+	 * @brief 辅助函数，传递friend属性。用于解包TextureEntry中的ITexture*
+	 */
+	static ITexture* textureOf(TextureEntry& entry) noexcept { return entry.texture; }
 
 public:
 	double fps = 0, tps = 0;
@@ -134,13 +142,23 @@ public:
 	virtual void fillWorld(const Vector2D& from, const Vector2D& to, unsigned int color) const = 0;
 	virtual void fillWorld(const Vector2D& from, double blockWidth, double blockHeight, unsigned int color) const = 0;
 	virtual void fillWorldBlock(const BlockLocation& from, unsigned int color) const = 0;
+	virtual void texture(TextureEntry, int x, int y, int w, int h) const noexcept = 0;
+	virtual void textureWorld(TextureEntry entry, Vector2D from, Vector2D targetSizeBlock = Vector2D(1, 1), unsigned char alpha = 255, POINT srcFrom = {}, POINT srcSize = {}) const noexcept = 0;
 };
 
 class GdiRenderer final : public IRenderer {
 	friend class Game;
 	friend class GdiFont;
+	friend class GdiTexture;
+	friend class GdiTextureManager;
 	friend LRESULT __stdcall WindowCallback(HWND hwnd, UINT uMsg, WPARAM wParam, LPARAM lParam);
 	inline static BLENDFUNCTION blendFunction = {
+		.BlendOp = AC_SRC_OVER, // Only
+		.BlendFlags = 0, // Must 0
+		.SourceConstantAlpha = 255, // 预乘
+		.AlphaFormat = 0, // Not AC_SRC_ALPHA
+	};
+	inline static BLENDFUNCTION blendFunctionSrcAlpha{
 		.BlendOp = AC_SRC_OVER, // Only
 		.BlendFlags = 0, // Must 0
 		.SourceConstantAlpha = 255, // 预乘
@@ -177,31 +195,31 @@ class GdiRenderer final : public IRenderer {
 		if (!type) return true;
 		switch (type) {
 			case OBJ_BITMAP:
-				Logger.info(L"DeleteObject failure: BITMAP");
+				Logger.warn(L"DeleteObject failure: BITMAP");
 				break;
 			case OBJ_PEN:
-				Logger.info(L"DeleteObject failure: PEN");
+				Logger.warn(L"DeleteObject failure: PEN");
 				break;
 			case OBJ_BRUSH:
-				Logger.info(L"DeleteObject failure: BRUSH");
+				Logger.warn(L"DeleteObject failure: BRUSH");
 				break;
 			case OBJ_FONT:
-				Logger.info(L"DeleteObject failure: FONT");
+				Logger.warn(L"DeleteObject failure: FONT");
 				break;
 			case OBJ_REGION:
-				Logger.info(L"DeleteObject failure: REGION");
+				Logger.warn(L"DeleteObject failure: REGION");
 				break;
 			case OBJ_DC:
-				Logger.info(L"DeleteObject failure: DC");
+				Logger.warn(L"DeleteObject failure: DC");
 				break;
 			case OBJ_MEMDC:
-				Logger.info(L"DeleteObject failure: MEMDC");
+				Logger.warn(L"DeleteObject failure: MEMDC");
 				break;
 			case OBJ_PAL:
-				Logger.info(L"DeleteObject failure: PAL");
+				Logger.warn(L"DeleteObject failure: PAL");
 				break;
 			default:
-				Logger.info(L"DeleteObject failure: ? " + std::to_wstring(type));
+				Logger.warn(L"DeleteObject failure: ? " + std::to_wstring(type));
 				break;
 		}
 		return false;
@@ -253,6 +271,7 @@ public:
 				this->resizeEnd();
 			}
 		};
+		textureManager.load();
 	}
 
 	~GdiRenderer() override {
@@ -366,6 +385,30 @@ public:
 	}
 
 	void fillWorldBlock(const BlockLocation& from, const unsigned int color) const override { fillWorld(from.getPosition(), 1, 1, color); }
+	void texture(TextureEntry, int x, int y, int w, int h) const noexcept override {}
+
+	void textureWorld(TextureEntry entry, Vector2D from, Vector2D targetSize, const unsigned char alpha = 255, const POINT srcFrom = {}, POINT srcSize = {}) const noexcept override {
+		targetSize = world2client(from + targetSize);
+		from = world2client(from);
+		targetSize.subtract(from);
+		const GdiTexture* const texture = assert_dynamic_cast<GdiTexture*>(textureOf(entry));
+		SelectObject(assistDC, texture->bitmap);
+		const ScopeGuard guard{[this] { SelectObject(assistDC, assistBitmap); }};
+		if (srcSize.x <= 0 && srcSize.y <= 0) {
+			srcSize.x = texture->width;
+			srcSize.y = texture->height;
+			if (texture->withSrcAlpha) {
+				blendFunctionSrcAlpha.SourceConstantAlpha = alpha;
+				AlphaBlend(canvasDC, static_cast<int>(from.getX()), static_cast<int>(from.getY()), static_cast<int>(targetSize.getX()), static_cast<int>(targetSize.getY()), assistDC, srcFrom.x, srcFrom.y, srcSize.x, srcSize.y, blendFunctionSrcAlpha);
+			}
+			else StretchBlt(canvasDC, static_cast<int>(from.getX()), static_cast<int>(from.getY()), static_cast<int>(targetSize.getX()), static_cast<int>(targetSize.getY()), assistDC, srcFrom.x, srcFrom.y, srcSize.x, srcSize.y, SRCCOPY);
+		}
+		else {
+			BLENDFUNCTION& function = texture->withSrcAlpha ? blendFunctionSrcAlpha : blendFunction;
+			function.SourceConstantAlpha = alpha;
+			AlphaBlend(canvasDC, static_cast<int>(from.getX()), static_cast<int>(from.getY()), static_cast<int>(targetSize.getX()), static_cast<int>(targetSize.getY()), assistDC, srcFrom.x, srcFrom.y, srcSize.x, srcSize.y, function); // TODO(EmsiaetKadosh): need textureDC
+		}
+	}
 };
 
 extern IRenderer& renderer;

@@ -40,7 +40,16 @@ public:
 };
 
 class SettingsWindow final : public Window {
-public:
+	Animation animation = Animation();
 	SettingsWindow() {
+		TextBar* bar = static_cast<TextBar*>(widgets.emplace_back(TextBar(0.1, -0.1, 0.8, 0.2, UILocation::LEFT)).ptr());
+		animation.setDuration(20).depends(Animation::AD_TIME).features(Animation::AS_CUBIC);
+	}
+
+public:
+	static SettingsWindow* create() noexcept { return allocatedFor(new SettingsWindow()); }
+	void tick() noexcept(false) override {
+		if (interactManager.getKey(Keys::Escape).wasPressed()) game.closeWindow(this);
+		;
 	}
 };

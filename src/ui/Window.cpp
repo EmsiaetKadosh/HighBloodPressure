@@ -2,12 +2,42 @@
 // Created by EmsiaetKadosh on 25-1-14.
 //
 
-#include "Window.h"
 
 #include "..\game\Animation.h"
+#include "..\interact\InteractManager.h"
+#include "Window.h"
 #include "..\game\Game.h"
 #include "..\game\world\World.h"
-#include "..\interact\InteractManager.h"
+#include "xWindows.h"
+
+int Widget::passEvent(const MouseActionCode action, const MouseButtonCode value, const int x, const int y) noexcept {
+	if (action == MouseActionCode::MAC_LEAVE || !isMouseIn(x, y)) {
+		if (hasMouse) onMouseLeave(0);
+		hasMouse = false;
+		return 0;
+	}
+	hasMouse = true;
+	switch (action) {
+		case MouseActionCode::MAC_HOVER:
+			onHover(1);
+			break;
+		case MouseActionCode::MAC_MOVE:
+			onHover(0);
+			break;
+		case MouseActionCode::MAC_DOWN:
+			onMouseDown(value);
+			break;
+		case MouseActionCode::MAC_UP:
+			onMouseUp(value);
+			break;
+		case MouseActionCode::MAC_DOUBLE:
+			onMouseClick(0x80);
+			break;
+		default:
+			break;
+	}
+	return 1;
+}
 
 int Window::pop() noexcept {
 	gc.submit(this);
@@ -53,7 +83,7 @@ void WindowManager::clear() noexcept {
 CaptionWindow::CaptionWindow() {
 	Widget* close = widgets.emplace_back(Button(0, 0, interactSettings.actual.captionHeight, interactSettings.actual.captionHeight, UILocation::RIGHT_TOP, L"\\f\1\u2716"_literal));
 	close->mouseClick = [](Widget&, MouseButtonCode) { DestroyWindow(MainWindowHandle); };
-	close->onTick = [](const Widget& self, MouseButtonCode) { if (self.containsMouse()) game.getFloatWindow().push(TranslatableText(L"hbp.caption.close").getRenderableString()); };
+	close->onTick = [](const Widget& self, MouseButtonCode) { if (self.containsMouse()) game.getFloatWindow().push(L"hbp.caption.close"_translates.getRenderableString()); };
 	close->absolute();
 	close->backgroundColor.hover = 0xffee0000;
 	close->backgroundColor.active = 0;
@@ -66,7 +96,7 @@ CaptionWindow::CaptionWindow() {
 
 	Widget* maxRestore = widgets.emplace_back(Button(-interactSettings.actual.captionHeight, 0, interactSettings.actual.captionHeight, interactSettings.actual.captionHeight, UILocation::RIGHT_TOP, IsZoomed(MainWindowHandle) ? L"\\f\1🗗"_literal : L"\\f\1🗖"_literal));
 	maxRestore->mouseClick = [](Widget&, MouseButtonCode) { renderer.setZoom(!renderer.isZoomed()); };
-	maxRestore->onTick = [](const Widget& self, MouseButtonCode) { if (self.containsMouse()) game.getFloatWindow().push(renderer.isZoomed() ? TranslatableText(L"hbp.caption.restore").getRenderableString() : TranslatableText(L"hbp.caption.maximize").getRenderableString()); };
+	maxRestore->onTick = [](const Widget& self, MouseButtonCode) { if (self.containsMouse()) game.getFloatWindow().push(renderer.isZoomed() ? L"hbp.caption.restore"_translates.getRenderableString() : L"hbp.caption.maximize"_translates.getRenderableString()); };
 	maxRestore->absolute();
 	maxRestore->unused[1] = static_cast<char>(IsZoomed(MainWindowHandle));
 	maxRestore->backgroundColor.hover = 0xffcccccc;
@@ -79,7 +109,7 @@ CaptionWindow::CaptionWindow() {
 	maxRestore->foregroundColor.clicked = 0xff000000;
 
 	Widget* hide = widgets.emplace_back(Button(-2 * interactSettings.actual.captionHeight, 0, interactSettings.actual.captionHeight, interactSettings.actual.captionHeight, UILocation::RIGHT_TOP, L"\\f\1🗕"_literal));
-	hide->onTick = [](const Widget& self, MouseButtonCode) { if (self.containsMouse()) game.getFloatWindow().push(TranslatableText(L"hbp.caption.minimize").getRenderableString()); };
+	hide->onTick = [](const Widget& self, MouseButtonCode) { if (self.containsMouse()) game.getFloatWindow().push(L"hbp.caption.minimize"_translates.getRenderableString()); };
 	hide->mouseClick = [](Widget&, MouseButtonCode) { ShowWindow(MainWindowHandle, SW_MINIMIZE); };
 	hide->absolute();
 	hide->backgroundColor.hover = 0xffcccccc;
@@ -94,9 +124,9 @@ CaptionWindow::CaptionWindow() {
 	Widget* options = widgets.emplace_back(Button(0, 0, interactSettings.actual.captionHeight, interactSettings.actual.captionHeight, UILocation::LEFT_TOP, L"\\f\1⛭"_literal));
 	options->onTick = [](const Widget& self, MouseButtonCode) {
 		if (self.containsMouse()) {
-			game.getFloatWindow().push(TranslatableText(L"hbp.float.settings").getRenderableString());
-			game.getFloatWindow().push(LiteralText(L"\\.ffee0000\\#ff000000中键获取位置信息、调整tickRate").getRenderableString());
-			game.getFloatWindow().push(TranslatableText(L"hbp.float.freshCanvas").getRenderableString());
+			game.getFloatWindow().push(L"hbp.float.settings"_translates.getRenderableString());
+			game.getFloatWindow().push(L"hbp.float.freshCanvas"_translates.getRenderableString());
+			game.getFloatWindow().push(L"\\f\2TM\\f\3TM\\f\4TM\\f\5TM");
 		}
 	};
 	options->mouseClick = [](Widget&, const MouseButtonCode code) {
@@ -108,6 +138,8 @@ CaptionWindow::CaptionWindow() {
 			Logger.info(game.entityManager->getEntity(1)->getLocation().getPosition().toString());
 			if (interactSettings.constants.msPerTick < 100) interactSettings.constants.msPerTick = 40 * InteractSettings::Constants::MsPerTick;
 			else interactSettings.constants.msPerTick = InteractSettings::Constants::MsPerTick;
+		} else if (static_cast<int>(MouseButtonCodeEnum::MBC_L_CHANGE) & code) {
+			if (game.setWindow(SettingsWindow::create())) Logger.error(L"Failed to open SettingsWindow");
 		}
 	};
 	options->absolute();
@@ -128,6 +160,7 @@ void CaptionWindow::render(const double tickDelta, const QWORD tickRendering) co
 	if (hidden) return;
 	renderer.fill(0, 0, renderer.getWidth(), interactSettings.actual.captionHeight, 0xff666666);
 	for (const Widget* widget : widgets) widget->render(tickDelta, tickRendering);
+	renderer.getFontManager().get(1).drawCenter(L"High Blood Pressure", 0, 0, renderer.getWidth(), interactSettings.actual.captionHeight, 0xffee0000);
 }
 
 void CaptionWindow::onResize() {
@@ -198,6 +231,19 @@ unsigned int Widget::colorSelector(const Color& clr) const {
 }
 
 void Widget::render(double tickDelta, QWORD tickRendering) const noexcept { renderer.fill(left, top, width, height, colorSelector(backgroundColor)); }
+
+Widget& Widget::absolute(const bool value) & {
+	if (value == isAbsoluteLocation) return *this;
+	isAbsoluteLocation = value;
+	if (renderer.getWidth() != 0 && renderer.getHeight() != 0) onResize();
+	return *this;
+}
+
+bool Widget::isMouseIn(int x, int y) noexcept {
+	x -= left;
+	y -= top;
+	return 0 <= x and x <= width and 0 <= y and y <= height;
+}
 
 void Widget::onResize() {
 	if (isAbsoluteLocation) {
@@ -290,8 +336,23 @@ void Button::render(const double tickDelta, const QWORD tickRendering) const noe
 	if (name) renderer.getFontManager().getDefault().drawCenter(name->getRenderableString(), left, top, width, height, colorSelector(foregroundColor));
 }
 
+void TextBar::render(const double tickDelta, const QWORD tickRendering) const noexcept {
+	Widget::render(tickDelta, tickRendering);
+	editor.render(tickDelta, tickRendering);
+}
+
+void TextBar::onMouseDown(const MouseButtonCode code) noexcept {
+	Widget::onMouseDown(code);
+	editor.focus(true);
+}
+
+int TextBar::passEvent(const MouseActionCode action, const MouseButtonCode value, const int x, const int y) noexcept {
+	Logger.debug(Logger.of((int)action, value, x, y));
+	return Widget::passEvent(action, value, x, y);
+}
+
 ConfirmWindow& ConfirmWindow::requireConfirm(const Function<void(Button&)>& func) {
-	confirm = dynamic_cast<Button*>(widgets.emplace_back(std::move(Button(0, 0, 0.4, 0.08, UILocation::CENTER, TranslatableText(L"hbp.confirm.confirm")))).ptr());
+	confirm = dynamic_cast<Button*>(widgets.emplace_back(std::move(Button(0, 0, 0.4, 0.08, UILocation::CENTER, L"hbp.confirm.confirm"_translates))).ptr());
 	confirm->location = UILocation::CENTER;
 	confirm->backgroundColor.active = 0x99000000;
 	confirm->backgroundColor.hover = 0x9900ff00;
@@ -319,7 +380,7 @@ ConfirmWindow& ConfirmWindow::requireConfirm(const Function<void(Button&)>& func
 }
 
 ConfirmWindow& ConfirmWindow::requireCancel(const Function<void(Button&)>& func) {
-	cancel = dynamic_cast<Button*>(widgets.emplace_back(std::move(Button(0, 0.1, 0.4, 0.08, UILocation::CENTER, TranslatableText(L"hbp.confirm.cancel")))).ptr());
+	cancel = dynamic_cast<Button*>(widgets.emplace_back(std::move(Button(0, 0.1, 0.4, 0.08, UILocation::CENTER, L"hbp.confirm.cancel"_translates))).ptr());
 	cancel->mouseClick = [this](Widget&, MouseButtonCode) { syncClose(); };
 	cancel->location = UILocation::CENTER;
 	cancel->backgroundColor.active = 0x99000000;

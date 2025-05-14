@@ -27,7 +27,6 @@ class Entity;
 class [[carlbeks::predecl, carlbeks::defineat("Player.h")]] Player;
 class [[carlbeks::predecl, carlbeks::defineat("World.h")]] World;
 class EntityManager;
-
 using EntityID = QWORD;
 
 class BoundingBox {
@@ -169,9 +168,7 @@ public:
 		};
 	}
 
-	[[nodiscard]] String toString(const Vector2D& position) const {
-		return L"left = " + dtoString(position.getX() - left) + L", right = " + dtoString(position.getX() + right) + L", top = " + dtoString(position.getY() - top) + L", bottom = " + dtoString(position.getY() + bottom);
-	}
+	[[nodiscard]] String toString(const Vector2D& position) const { return L"left = " + dtoString(position.getX() - left) + L", right = " + dtoString(position.getX() + right) + L", top = " + dtoString(position.getY() - top) + L", bottom = " + dtoString(position.getY() + bottom); }
 };
 
 /**
@@ -306,9 +303,11 @@ public:
 	 * @code this->momentum.atomicAcquire() @endcode
 	 */
 	[[nodiscard]] Location getLocation(const double tickDelta, const QWORD tickRendering) const noexcept {
-		// const AtomicGuard guard = momentum.atomicGuard();
-		// assert momentum.locationTick <= tickRendering && momentum.velocityTick <= tickRendering;
-		if (momentum.locationTick > tickRendering) return momentum.lastLocation.getPosition() + momentum.lastVelocity.getRelativeLocation(tickDelta);
+		if (momentum.locationTick > tickRendering) // momentum的信息领先
+			return momentum.lastLocation.getPosition();
+		if (momentum.velocityTick < tickRendering) // momentum的信息落后
+			return momentum.location.getPosition() + momentum.velocity.getRelativeLocation(1);
+		// momentum的信息同步
 		return momentum.location.getPosition() + momentum.velocity.getRelativeLocation(tickDelta);
 	}
 };
@@ -361,8 +360,6 @@ public:
 	Entity& operator*() const noexcept { return *this->entity; }
 };
 
-class EntityList final : public AnywhereEditableList<EntityEntry, EntityList> {
-
-};
+class EntityList final : public AnywhereEditableList<EntityEntry, EntityList> {};
 
 

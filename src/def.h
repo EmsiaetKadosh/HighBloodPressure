@@ -89,6 +89,7 @@ using HashMap = std::unordered_map<Key, T, Hash, KeyEqual, Allocator>;
 #pragma comment(lib, "dwmapi.lib")
 #pragma comment(lib, "Uxtheme.lib")
 #pragma comment(lib, "winmm.lib")
+#pragma comment(lib, "imm32.lib")
 
 #include "warnings.h"
 
@@ -247,8 +248,11 @@ public:
 	template <NewMoveable T> requires (std::is_base_of_v<Base, T> || std::is_same_v<Base, T>) && TypeName<T>
 	Container(T&& value) : value(allocatedFor(new T(std::forward<T>(value)))), hasValue(true) {}
 
-	template <TypeName T, typename... Args> requires (std::is_base_of_v<Base, T> || std::is_same_v<Base, T>)
-	Container(T** out, Args&&... args) : value(allocatedFor(new T(std::forward<Args>(args)...))), hasValue(true) { if (out) *out = static_cast<T*>(value); }
+	template <TypeName T> requires std::is_base_of_v<Base, T> || std::is_same_v<Base, T>
+	Container(Container<T>&& other) noexcept : value(other.value), hasValue(other.hasValue) { other.value = nullptr, other.hasValue = false; }
+
+	template <typename ...Args>
+	Container(Args&&... args) : value(allocatedFor(new Base(std::forward<Args>(args)...))), hasValue(true) {}
 
 	~Container() {
 		if (hasValue) delete deallocating(value);

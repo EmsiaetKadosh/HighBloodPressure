@@ -435,11 +435,11 @@ LRESULT __stdcall WindowCallback(const HWND hwnd, const UINT uMsg, const WPARAM 
 			break;
 		case WM_KEYDOWN:
 		case WM_SYSKEYDOWN:
-			interactManager.update(static_cast<int>(wParam), true);
+			if (!interactManager.rawInputEnabled()) interactManager.update(static_cast<int>(wParam), true);
 			break;
 		case WM_KEYUP:
 		case WM_SYSKEYUP:
-			interactManager.update(static_cast<int>(wParam), false);
+			if (!interactManager.rawInputEnabled()) interactManager.update(static_cast<int>(wParam), false);
 			break;
 		case WM_LBUTTONDOWN:
 		case WM_NCLBUTTONDOWN:
@@ -553,12 +553,12 @@ LRESULT __stdcall HookCallback(const int code, const WPARAM wParam, const LPARAM
 		case WM_LBUTTONUP:
 		case WM_NCLBUTTONUP:
 			PostMessageW(MainWindowHandle, WM_APP_LBUTTONUP, p->wParam, p->lParam);
-			Logger.trace(wParam ? L"[Hook] LButtonUp    (Removed)" : L"[Hook] LButtonUp");
+			// Logger.trace(wParam ? L"[Hook] LButtonUp    (Removed)" : L"[Hook] LButtonUp");
 			return 0;
 		case WM_MBUTTONDOWN:
 		case WM_NCMBUTTONDOWN:
 			PostMessageW(MainWindowHandle, WM_APP_MBUTTONDOWN, p->wParam, p->lParam);
-			Logger.trace(wParam ? L"[Hook] MButtonDown  (Removed)" : L"[Hook] MButtonDown");
+			// Logger.trace(wParam ? L"[Hook] MButtonDown  (Removed)" : L"[Hook] MButtonDown");
 			return 0;
 		default:
 			break;
@@ -590,6 +590,7 @@ inline void GameInitialize() {
 	// 	return 0;
 	// 	})
 	// ));
+	interactSettings.setScreenScale(GetSystemMetrics(SM_CYSCREEN) / 2160.0);
 	translator.initialize(); // 定序：对所有文字的显示优先初始化
 	interactManager.initialize(); // 定序：快捷键优先初始化。后续的其他模块可能依赖初始化时快捷键获取
 	game.initialize(); // 定序：game中的worldManager获取快捷键依赖interactManager先行初始化
@@ -637,7 +638,7 @@ inline void GameInitialize() {
 	// RawInput
 	device.usUsagePage = 0x01;
 	device.usUsage = 0x06;
-	device.dwFlags = RIDEV_NOLEGACY | RIDEV_INPUTSINK; // 禁用传统键盘消息
+	device.dwFlags = RIDEV_INPUTSINK; // 如果指定RIDEV_NOLEGACY则会禁用传统键盘消息
 	device.hwndTarget = MainWindowHandle;
 	if (!RegisterRawInputDevices(&device, 1, sizeof(RAWINPUTDEVICE))) Logger.error(Logger.of(L"RegisterRawInputDevice failed. LastError:", GetLastError()));
 	else interactManager.enableRawInput();
@@ -647,7 +648,7 @@ inline void GameInitialize() {
 inline void SystemFinalize(const WNDCLASSEX& wc, const HHOOK& hook, RAWINPUTDEVICE& device) {
 	if (!UnhookWindowsHookEx(hook)) Logger.error(L"Failed to UnhookWindowsHookEx. LastError:" + std::to_wstring(GetLastError()));
 	if (!UnregisterClassW(wc.lpszClassName, wc.hInstance)) Logger.error(L"Failed to UnregisterClassW. LastError:" + std::to_wstring(GetLastError()));
-	device.dwFlags |= RIDEV_REMOVE;
+	device.dwFlags = RIDEV_REMOVE;
 	if (!RegisterRawInputDevices(&device, 1, sizeof(RAWINPUTDEVICE))) Logger.error(Logger.of(L"Failed to UnregisterRawInputDevice. LastError:", GetLastError()));
 }
 

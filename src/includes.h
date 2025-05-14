@@ -27,6 +27,7 @@
 #include "render\TextureManager.h"
 #include "render\Renderer.h" // required by direct.h
 #include "ui\Hud.h"
+#include "ui\TextEditor.h" // required by Window.cpp
 #include "ui\Window.h"
 
 // game
@@ -39,3 +40,5 @@
 #include "game\world\Block.h"
 #include "game\world\World.h"
 #include "game\entity\Player.h"
+// game structure extension
+#include "game\world\xBlocks.h"

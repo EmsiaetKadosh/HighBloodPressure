@@ -34,10 +34,14 @@ public:
 		Success();
 	}
 
-	Task& every(QWORD tick);
-	Task& after(QWORD tick);
-	Task& until(QWORD tick);
-	Task& forever();
+	Task& every(QWORD tick) & noexcept;
+	Task& after(QWORD tick) & noexcept;
+	Task& until(QWORD tick) & noexcept;
+	Task& forever() & noexcept;
+	Task&& every(const QWORD tick) && noexcept { return std::move(every(tick)); }
+	Task&& after(const QWORD tick) && noexcept { return std::move(after(tick)); }
+	Task&& until(const QWORD tick) && noexcept { return std::move(until(tick)); }
+	Task&& forever() && noexcept { return std::move(forever()); }
 
 	static Task* of(const Function<void(Task&)>& func) noexcept { return allocatedFor(new Task(func)); }
 	static Task* of(Function<void(Task&)>&& func) noexcept { return allocatedFor(new Task(std::move(func))); }
@@ -70,6 +74,8 @@ public:
 	ScopeGuard& operator=(ScopeGuard&& other) = delete;
 	~ScopeGuard() { tasks(); }
 
-	ScopeGuard& then(const Function<void()>& next) { return tasks.then(next), *this; }
-	ScopeGuard& then(Function<void()>&& next) { return tasks.then(std::move(next)), *this; }
+	ScopeGuard& then(const Function<void()>& next) & { return tasks.then(next), *this; }
+	ScopeGuard& then(Function<void()>&& next) & { return tasks.then(std::move(next)), *this; }
+	ScopeGuard&& then(const Function<void()>& next) && { return tasks.then(next), std::move(*this); }
+	ScopeGuard&& then(Function<void()>&& next) && { return tasks.then(std::move(next)), std::move(*this); }
 };

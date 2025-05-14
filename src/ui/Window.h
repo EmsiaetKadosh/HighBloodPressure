@@ -9,6 +9,7 @@
 #include "..\game\Animation.h"
 #include "..\render\Renderer.h"
 #include "..\utils\IText.h"
+#include "TextEditor.h"
 
 class WindowManager;
 
@@ -66,32 +67,14 @@ public:
 
 	unsigned int colorSelector(const Color& clr) const;
 	void render(double tickDelta, QWORD tickRendering) const noexcept override;
-
-	Widget& alignLocation(const UILocation loc) noexcept {
-		location = loc;
-		return *this;
-	}
-
-	Widget& alignTextLocation(const UILocation loc) noexcept {
-		textLocation = loc;
-		return *this;
-	}
-
-	Widget& absolute(const bool value = true) {
-		if (value == isAbsoluteLocation) return *this;
-		isAbsoluteLocation = value;
-		if (renderer.getWidth() != 0 && renderer.getHeight() != 0) onResize();
-		return *this;
-	}
-
+	Widget& alignLocation(const UILocation loc) & noexcept { return location = loc, *this; }
+	Widget&& alignLocation(const UILocation loc) && noexcept { return location = loc, std::move(*this); }
+	Widget& alignTextLocation(const UILocation loc) & noexcept { return textLocation = loc, *this; }
+	Widget&& alignTextLocation(const UILocation loc) && noexcept { return textLocation = loc, std::move(*this); }
+	Widget&& absolute(const bool value = true) && { return std::move(absolute(value)); }
+	Widget& absolute(bool value = true) &;
 	bool containsMouse() const noexcept { return hasMouse; }
-
-	virtual bool isMouseIn(int x, int y) noexcept {
-		x -= left;
-		y -= top;
-		return 0 <= x and x <= width and 0 <= y and y <= height;
-	}
-
+	virtual bool isMouseIn(int x, int y) noexcept;
 	virtual void onResize();
 	virtual void onHover(const int value) noexcept { if (mouseHover) mouseHover(*this, value); }
 
@@ -114,34 +97,7 @@ public:
 	virtual void onMouseClick(const MouseButtonCode value) noexcept { if (mouseClick) mouseClick(*this, value); }
 	void tick() noexcept(false) override { if (onTick) onTick(*this, 0); }
 
-	virtual int passEvent(const MouseActionCode action, const MouseButtonCode value, const int x, const int y) noexcept {
-		if (action == MouseActionCode::MAC_LEAVE || !isMouseIn(x, y)) {
-			if (hasMouse) onMouseLeave(0);
-			hasMouse = false;
-			return 0;
-		}
-		hasMouse = true;
-		switch (action) {
-			case MouseActionCode::MAC_HOVER:
-				onHover(1);
-				break;
-			case MouseActionCode::MAC_MOVE:
-				onHover(0);
-				break;
-			case MouseActionCode::MAC_DOWN:
-				onMouseDown(value);
-				break;
-			case MouseActionCode::MAC_UP:
-				onMouseUp(value);
-				break;
-			case MouseActionCode::MAC_DOUBLE:
-				onMouseClick(0x80);
-				break;
-			default:
-				break;
-		}
-		return 1;
-	}
+	virtual int passEvent(MouseActionCode action, MouseButtonCode value, int x, int y) noexcept;
 };
 
 class Window : public AnywhereEditable<Window, WindowManager>, public IRenderable, public ITickable {
@@ -151,7 +107,6 @@ protected:
 	List<Container<Widget>> widgets;
 
 	Window() = default;
-
 	~Window() override = default;
 
 public:
@@ -164,7 +119,7 @@ public:
 	 * 如果返回false，则拒绝设置窗口。
 	 * @return 是否允许将显示窗口设为自身
 	 */
-	virtual bool onOpen() { return true; }
+	virtual bool onOpen() { return this->onResize(), true; }
 	/**
 	 * 指示该窗口打开时，是否要暂停游戏的进行。有些时候，窗口打开时需要暂停游戏的进行。
 	 * @returns 是否暂停游戏
@@ -191,6 +146,11 @@ public:
 	int pop(Window* value) noexcept override;
 	void clear() noexcept;
 	void onResize() noexcept { for (Window& i : *this) i.onResize(); }
+
+	bool pausesGame() noexcept {
+		for (Window& i : *this) if (i.pausesGame()) return true;
+		return false;
+	}
 };
 
 class CaptionWindow final : public Window {
@@ -225,13 +185,13 @@ public:
 
 	void push(const Container<RenderableString>& string) {
 		flag.atomicAcquire();
-		strings.push_back(string);
+		strings.emplace_back(string);
 		flag.atomicRelease();
 	}
 
 	void push(Container<RenderableString>&& string) {
 		flag.atomicAcquire();
-		strings.push_back(std::move(string));
+		strings.emplace_back(std::move(string));
 		flag.atomicRelease();
 	}
 
@@ -251,13 +211,24 @@ public:
 	void render(double tickDelta, QWORD tickRendering) const noexcept override;
 };
 
+class TextBar : public Widget {
+	TextEditor editor;
+
+public:
+	Animation animation = Animation().features(Animation::AS_CUBIC).setDuration(20);
+	TextBar(const double x, const double y, const double w, const double h, const UILocation location) : Widget(x, y, w, h, location) { backgroundColor.hover = 0xff222222; }
+	[[nodiscard]] const TextEditor& getTextEditor() const noexcept { return editor; }
+	[[nodiscard]] TextEditor& getTextEditor() noexcept { return editor; }
+	void render(double tickDelta, QWORD tickRendering) const noexcept override;
+	void onMouseDown(MouseButtonCode code) noexcept override;
+	int passEvent(MouseActionCode action, MouseButtonCode value, int x, int y) noexcept override;
+};
 
 class ConfirmWindow : public Window {
 public:
 	Container<IText> text;
-	Button
-		*confirm = nullptr,
-		*cancel = nullptr;
+	Button* confirm = nullptr;
+	Button* cancel = nullptr;
 
 private:
 	ConfirmWindow(const Container<IText>& text) : Window(), text(text) {}

@@ -10,10 +10,18 @@
 #include "..\ui\Window.h"
 
 class [[carlbeks::predecl, carlbeks::defineat("World.h")]] WorldManager;
+class [[carlbeks::predecl, carlbeks::defineat("Entity.h")]] Entity;
 class [[carlbeks::predecl, carlbeks::defineat("Entity.h")]] EntityManager;
+class [[carlbeks::predecl, carlbeks::defineat("Block.h")]] Block;
 
 struct GameOptions {
-	bool autoJumpHighest = true;
+	struct Resource {
+		bool lazyLoad = false;
+	} resource;
+
+	struct Operations {
+		bool autoJumpHighest = true;
+	} operations;
 };
 
 class Game final /* : public IRenderable, public ITickable */ {
@@ -49,43 +57,28 @@ public:
 	[[nodiscard]] QWORD getTick() const noexcept { return currentTick; }
 	void tick() noexcept(false);
 	void render(double tickDelta, QWORD tickRendering) const noexcept;
+	void handleResize();
+	int passEvent(MouseActionCode action, MouseButtonCode value, const int x, const int y) const noexcept;
 
 	/**
 	 * 所有窗口都提交给Game保管，在适当时刻自动删除。
 	 * 建议WindowType::create
+	 * @param window 要打开的窗口，nullptr表示清空窗口且popFailed参数无意义
+	 * @param popFailed 是否在失败时自动调用pop
 	 */
-	int setWindow(Window* window) noexcept {
-		if (window) {
-			if (window->onOpen()) {
-				for (Window& i : windows) i.passEvent(MouseActionCode::MAC_LEAVE, 0, 0, 0);
-				windows.pushNewed(window);
-				Success();
-			}
-			Failed();
-		}
-		windows.clear();
-		Success();
-	}
+	int setWindow(Window* window, bool popFailed = true) noexcept;
 
 	[[nodiscard]] Window* getWindow() const noexcept {
 		if (auto* const back = windows.back()) return dynamic_cast<Window*>(back);
 		return nullptr;
 	}
 
-	void handleResize() {
-		caption->onResize();
-		hud.onResize();
-		windows.onResize();
-		floatWindow->onResize();
-	}
 
-	int passEvent(const MouseActionCode action, const MouseButtonCode value, const int x, const int y) const noexcept {
-		int ret = 0;
-		ret = caption->passEvent(action, value, x, y);
-		if (Window* const window = getWindow()) window->passEvent(action, value, x, y);
-		floatWindow->passEvent(action, value, x, y);
-		return ret;
+	template <typename T, typename... Args> requires requires {
+		std::is_base_of_v<Entity, T> || std::is_base_of_v<Block, T>;
+		new T(std::declval<Args>()...);
 	}
+	T* newInstanceOf(Args&&... args) const noexcept { return allocatedFor(new T(std::forward<Args>(args)...)); }
 };
 
 extern Game game;

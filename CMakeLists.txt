@@ -34,15 +34,15 @@ add_executable(${PROJECT_NAME}
         # utils
         src/utils/Task.cpp
         # hbp
-        # Animation
+        src/game/Animation.cpp
 
         src/interact/InteractManager.cpp
         src/utils/IText.cpp
-        src/render/TextureManager.cpp
-        src/render/dx/direct.cpp
         src/game/world/Location.cpp
+        src/render/TextureManager.cpp
         src/render/Renderer.cpp
         src/ui/Hud.cpp
+        src/ui/TextEditor.cpp
         src/ui/Window.cpp
 
         src/game/Game.cpp
@@ -54,8 +54,10 @@ add_executable(${PROJECT_NAME}
         src/game/world/World.cpp
         src/game/entity/Player.cpp
 
-        src/render/dx/font.cpp
-        src/render/dx/direct.cpp
+        # xBlocks
+
+        # src/render/dx/font.cpp
+        # src/render/dx/direct.cpp
 )
 set(CPACK_PROJECT_NAME ${PROJECT_NAME})
 set(CPACK_PROJECT_VERSION ${PROJECT_VERSION})

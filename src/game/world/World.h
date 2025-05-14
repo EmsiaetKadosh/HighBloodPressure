@@ -217,31 +217,5 @@ class StartWorld final : public World {
 	~StartWorld() override { Logger.debug(L"~StartWorld() called"); }
 
 public:
-	static StartWorld* create() {
-		StartWorld* world = allocatedFor(new StartWorld);
-		Block* block;
-		if (world->addBlock(block = PureBarrierBlock::create(BlockLocation(-5, 1)), WorldTransportReason::InitialGeneration)) block->onRemove();
-		if (world->addBlock(block = PureBarrierBlock::create(BlockLocation(-4, 1)), WorldTransportReason::InitialGeneration)) block->onRemove();
-		if (world->addBlock(block = PureBarrierBlock::create(BlockLocation(-3, 1)), WorldTransportReason::InitialGeneration)) block->onRemove();
-		if (world->addBlock(block = PureBarrierBlock::create(BlockLocation(-2, 1)), WorldTransportReason::InitialGeneration)) block->onRemove();
-		if (world->addBlock(block = PureBarrierBlock::create(BlockLocation(-1, 1)), WorldTransportReason::InitialGeneration)) block->onRemove();
-		if (world->addBlock(block = PureBarrierBlock::create(BlockLocation(0, 1)), WorldTransportReason::InitialGeneration)) block->onRemove();
-		else dynamic_cast<PureBarrierBlock*>(block)->setColor(0xff4488ee);
-		if (world->addBlock(block = PureBarrierBlock::create(BlockLocation(1, 1)), WorldTransportReason::InitialGeneration)) block->onRemove();
-		if (world->addBlock(block = PureBarrierBlock::create(BlockLocation(2, 1)), WorldTransportReason::InitialGeneration)) block->onRemove();
-		if (world->addBlock(block = PureBarrierBlock::create(BlockLocation(3, 1)), WorldTransportReason::InitialGeneration)) block->onRemove();
-		if (world->addBlock(block = PureBarrierBlock::create(BlockLocation(4, 1)), WorldTransportReason::InitialGeneration)) block->onRemove();
-		if (world->addBlock(block = PureBarrierBlock::create(BlockLocation(5, 1)), WorldTransportReason::InitialGeneration)) block->onRemove();
-		for (long i = 6; i < 30; ++i) {
-			if (world->addBlock(block = PureBarrierBlock::create(BlockLocation(i, 1)), WorldTransportReason::InitialGeneration)) block->onRemove();
-			if (world->addBlock(block = PureBarrierBlock::create(BlockLocation(-i, 1)), WorldTransportReason::InitialGeneration)) block->onRemove();
-			if (world->addBlock(block = PureBarrierBlock::create(BlockLocation(i, -4)), WorldTransportReason::InitialGeneration)) block->onRemove();
-			if (world->addBlock(block = PureBarrierBlock::create(BlockLocation(-i, -4)), WorldTransportReason::InitialGeneration)) block->onRemove();
-		}
-
-		if (world->addBlock(block = PureBarrierBlock::create(BlockLocation(-2, 0)), WorldTransportReason::InitialGeneration)) block->onRemove();
-		if (world->addBlock(block = PureBarrierBlock::create(BlockLocation(2, 0)), WorldTransportReason::InitialGeneration)) block->onRemove();
-		if (world->addBlock(block = PureBarrierBlock::create(BlockLocation(0, -2)), WorldTransportReason::InitialGeneration)) block->onRemove();
-		return world;
-	}
+	static StartWorld* create();
 };

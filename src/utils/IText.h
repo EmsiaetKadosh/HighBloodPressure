@@ -362,6 +362,7 @@ private:
 };
 
 inline RenderableString operator""_renderable(const wchar* const text, const QWORD length) noexcept { return RenderableString(String(text, length)); }
+inline const wchar* operator""_mark_renderable(const wchar* const text, const QWORD) noexcept { return text; }
 
 class IFonts {
 protected:
@@ -420,7 +421,6 @@ class GdiFont final : public IFonts {
 	}
 
 protected:
-
 	[[nodiscard]] int getWidth(const RenderableString::StringConfig& config) const noexcept override;
 	[[nodiscard]] int drawSingle(const RenderableString::StringConfig& config, int x, int y, unsigned int defaultColor) const noexcept;
 	void drawDirect(const RenderableString::StringConfig& config, int x, int y, unsigned int defaultColor) const noexcept;
@@ -446,6 +446,14 @@ public:
 	void drawCenter(const RenderableString& text, int x, int y, int w, int h, unsigned int color = 0xffeeeeee) const noexcept override;
 };
 
+/**
+ * @note 默认字体编号：
+ * 1 - 标题栏字体，HBP
+ * 2 - 默认字体，HBP
+ * 3 - 调试字体，Jetbrains Mono
+ * 4 - 语言字体（中文），STSong
+ * 5 - 默认字体
+ */
 class IFontManager {
 	friend class IRenderer;
 
@@ -478,19 +486,19 @@ class GdiFontManager final : public IFontManager {
 
 public:
 	GdiFontManager(IRenderer* const renderer) : IFontManager(renderer) {
-		captionFont = &GdiFontManager::newFont(L"Microsoft YaHei UI Light");
-		defaultFont = &GdiFontManager::newFont(L"Microsoft YaHei UI Light");
-		captionFont->height = interactSettings.actual.captionHeight >> 1;
+		captionFont = &GdiFontManager::newFont(L"Carlbeks-HBP", 1.0, -0.04); // 1
+		defaultFont = &GdiFontManager::newFont(L"Carlbeks-HBP", 1.0, -0.04); // 2
+		GdiFontManager::newFont(L"Jetbrains Mono", 1.0, -0.078); // 3
+		GdiFontManager::newFont(L"STSong", 1.0, -0.12); // 4
+		GdiFontManager::newFont(L"", 1.0, -0.05); // 5
+
+		captionFont->height = static_cast<long>(interactSettings.actual.captionHeight * 0.5);
 		captionFont->resize = [this](int, int) {
-			if (interactSettings.actual.captionHeight != captionFont->height) {
-				captionFont->height = interactSettings.actual.captionHeight >> 1;
+			if (static_cast<long>(interactSettings.actual.captionHeight * 0.5) != captionFont->height) {
+				captionFont->height = static_cast<long>(interactSettings.actual.captionHeight * 0.5);
 				captionFont->clear();
 			}
 		};
-		GdiFontManager::newFont(L"Jetbrains Mono", 1.0, -0.078);
-		GdiFontManager::newFont(L"STSong", 1.0, -0.12);
-		GdiFontManager::newFont(L"Arial", 1.0, -0.13);
-		GdiFontManager::newFont(L"", 1.0, -0.05);
 	}
 
 	void finalize() override { for (auto& [id, font] : fonts) font.clear(); }
@@ -560,7 +568,6 @@ public:
 };
 
 inline TranslatableText operator""_translates(const wchar* const text, const QWORD length) noexcept { return TranslatableText(String(text, length)); }
-inline TranslatedText operator""__translated(const wchar* const text, const QWORD length) noexcept { return TranslatedText(String(text, length)); }
 
 using LangID = unsigned int;
 

@@ -57,12 +57,41 @@ void Game::render(const double tickDelta, const QWORD tickRendering) const noexc
 	gc.pack();
 }
 
+void Game::handleResize() {
+	caption->onResize();
+	hud.onResize();
+	windows.onResize();
+	floatWindow->onResize();
+}
+
+int Game::passEvent(const MouseActionCode action, const MouseButtonCode value, const int x, const int y) const noexcept {
+	int ret = 0;
+	ret = caption->passEvent(action, value, x, y);
+	if (Window* const window = getWindow()) window->passEvent(action, value, x, y);
+	floatWindow->passEvent(action, value, x, y);
+	return ret;
+}
+
+int Game::setWindow(Window* window, const bool popFailed) noexcept {
+	if (window) {
+		if (window->onOpen()) {
+			for (Window& i : windows) i.passEvent(MouseActionCode::MAC_LEAVE, 0, 0, 0);
+			windows.pushNewed(window);
+			Success();
+		}
+		if (popFailed) window->pop();
+		Failed();
+	}
+	windows.clear();
+	Success();
+}
+
 void Game::tick() noexcept(false) {
 	// ++currentTick; // 托管到gameThread完成
 	floatWindow->clear();
 	floatWindow->tick();
 	renderer.tick();
-	worldManager->tick();
+	if (!windows.pausesGame()) worldManager->tick();
 	caption->tick();
 	hud.tick();
 	windows.tick();

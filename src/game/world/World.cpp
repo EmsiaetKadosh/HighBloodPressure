@@ -6,6 +6,7 @@
 
 #include "World.h"
 #include "..\Game.h"
+#include "xBlocks.h"
 
 void World::onRemove() noexcept(false) {
 	// Entity不需要在此处删除，交给EntityManager管理
@@ -292,8 +293,7 @@ BoundingBoxCollideResults World::boundingBoxCollideBlocks(const BoundingBox& bou
 			if (side == CollidingSide::TOP || side == CollidingSide::BOTTOM) {
 				if (const auto iter = yOrder.find(result); iter != yOrder.end()) result.order = iter->order;
 				else result.order = 0; // 修复
-			}
-			else {
+			} else {
 				if (const auto iter = xOrder.find(result); iter != xOrder.end()) result.order = iter->order;
 				else result.order = 0; // 修复
 			}
@@ -310,8 +310,8 @@ void WorldManager::tick() const noexcept(false) {
 		if (current && interactManager.isInClient()) {
 			if (interactManager.getKey(Keys::RightButton).isPressed()) if (blockMousePointing) current->removeBlockAt(renderer.mousePointingAtBlock.ofWorld(current->idWorld), WorldTransportReason::Debug), blockMousePointing->onRemove();
 			if (interactManager.getKey(Keys::LeftButton).isPressed() && !blockMousePointing) {
-				if (interactManager.getKey(Keys::LeftShift).isPressed()) current->addBlock(TestBarrierBlock::create(renderer.mousePointingAtBlock.ofWorld(current->idWorld)), WorldTransportReason::Debug);
-				else current->addBlock(TimedBarrierBlock::create(renderer.mousePointingAtBlock.ofWorld(current->idWorld)), WorldTransportReason::Debug);
+				if (interactManager.getKey(Keys::LeftShift).isPressed()) current->addBlock(game.newInstanceOf<TestBarrierBlock>(renderer.mousePointingAtBlock.ofWorld(current->idWorld)), WorldTransportReason::Debug);
+				else current->addBlock(game.newInstanceOf<TimedBarrierBlock>(renderer.mousePointingAtBlock.ofWorld(current->idWorld)), WorldTransportReason::Debug);
 			}
 		}
 	}
@@ -319,8 +319,8 @@ void WorldManager::tick() const noexcept(false) {
 		if (!game.getWindow() || game.getWindow()) current->tick();
 		if (interactManager.isInClient()) {
 			renderer.mousePointingAtBlock.setWorld(current->idWorld);
-			game.getFloatWindow().push(RenderableString(L"\\f\3\\#ffee66dd" + renderer.mousePointingAtBlock.toString()));
-			game.getFloatWindow().push(RenderableString(L"\\f\3\\#ffee0000" + renderer.mousePointingAtWorld.toString(!interactManager.getKey(Keys::Tab).isPressedAndDeal())));
+			game.getFloatWindow().push(L"\\#ffee66dd"_mark_renderable + renderer.mousePointingAtBlock.toString());
+			game.getFloatWindow().push(L"\\#ffee0000"_mark_renderable + renderer.mousePointingAtWorld.toString(!interactManager.getKey(Keys::Tab).isPressedAndDeal()));
 			if (blockMousePointing) for (RenderableString& r : blockMousePointing->getDescription()) game.getFloatWindow().push(std::move(r));
 		}
 		if (speedTweaker.wasPressedThenDeal()) {
@@ -328,4 +328,28 @@ void WorldManager::tick() const noexcept(false) {
 			else interactSettings.constants.msPerTick = interactSettings.constants.MsPerTick;
 		}
 	}
+}
+
+StartWorld* StartWorld::create() {
+	StartWorld* world = allocatedFor(new StartWorld);
+	Block* block;
+	if (world->addBlock(block = game.newInstanceOf<PureBarrierBlock>(BlockLocation(-5, 1)), WorldTransportReason::InitialGeneration)) block->onRemove();
+	if (world->addBlock(block = game.newInstanceOf<PureBarrierBlock>(BlockLocation(-4, 1)), WorldTransportReason::InitialGeneration)) block->onRemove();
+	if (world->addBlock(block = game.newInstanceOf<PureBarrierBlock>(BlockLocation(-3, 1)), WorldTransportReason::InitialGeneration)) block->onRemove();
+	if (world->addBlock(block = game.newInstanceOf<PureBarrierBlock>(BlockLocation(-2, 1)), WorldTransportReason::InitialGeneration)) block->onRemove();
+	if (world->addBlock(block = game.newInstanceOf<PureBarrierBlock>(BlockLocation(-1, 1)), WorldTransportReason::InitialGeneration)) block->onRemove();
+	if (world->addBlock(block = game.newInstanceOf<PureBarrierBlock>(BlockLocation(0, 1)), WorldTransportReason::InitialGeneration)) block->onRemove();
+	else dynamic_cast<PureBarrierBlock*>(block)->setColor(0xff4488ee);
+	if (world->addBlock(block = game.newInstanceOf<PureBarrierBlock>(BlockLocation(1, 1)), WorldTransportReason::InitialGeneration)) block->onRemove();
+	if (world->addBlock(block = game.newInstanceOf<PureBarrierBlock>(BlockLocation(2, 1)), WorldTransportReason::InitialGeneration)) block->onRemove();
+	if (world->addBlock(block = game.newInstanceOf<PureBarrierBlock>(BlockLocation(3, 1)), WorldTransportReason::InitialGeneration)) block->onRemove();
+	if (world->addBlock(block = game.newInstanceOf<PureBarrierBlock>(BlockLocation(4, 1)), WorldTransportReason::InitialGeneration)) block->onRemove();
+	if (world->addBlock(block = game.newInstanceOf<PureBarrierBlock>(BlockLocation(5, 1)), WorldTransportReason::InitialGeneration)) block->onRemove();
+	for (long i = 6; i < 30; ++i) {
+		if (world->addBlock(block = BrickBlock::create(BlockLocation(i, 1)), WorldTransportReason::InitialGeneration)) block->onRemove();
+		if (world->addBlock(block = BrickBlock::create(BlockLocation(-i, 1)), WorldTransportReason::InitialGeneration)) block->onRemove();
+		if (world->addBlock(block = BrickBlock::create(BlockLocation(i, -4)), WorldTransportReason::InitialGeneration)) block->onRemove();
+		if (world->addBlock(block = BrickBlock::create(BlockLocation(-i, -4)), WorldTransportReason::InitialGeneration)) block->onRemove();
+	}
+	return world;
 }

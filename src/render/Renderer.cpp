@@ -49,8 +49,8 @@ void GdiRenderer::gameStartRender() noexcept {
 }
 
 void GdiRenderer::gameEndRender() noexcept {
-	fontManager->get(1).draw(L"FPS: " + std::to_wstring(fps), 0, interactSettings.actual.captionHeight, 0xffee0000);
-	fontManager->get(1).draw(L"TPS: " + std::to_wstring(tps), 0, interactSettings.actual.captionHeight + interactSettings.actual.fontHeight, 0xffee0000);
+	fontManager->get(2).draw(L"FPS: " + std::to_wstring(fps), 0, interactSettings.actual.captionHeight, 0xffee0000);
+	fontManager->get(2).draw(L"TPS: " + std::to_wstring(tps), 0, interactSettings.actual.captionHeight + interactSettings.actual.fontHeight, 0xffee0000);
 	isRendering = false;
 	BitBlt(MainDC, 0, 0, windowWidth, windowHeight, canvasDC, 0, 0, SRCCOPY);
 	if (isResizing) {
@@ -80,6 +80,7 @@ void GdiRenderer::finalize(const bool isRenderThread) noexcept {
 		if (canvasBitmap) DeleteObject(canvasBitmap), canvasBitmap = nullptr;
 		if (assistBitmap) DeleteObject(assistBitmap), assistBitmap = nullptr;
 		if (resizeCopyBitmap) DeleteObject(resizeCopyBitmap), resizeCopyBitmap = nullptr;
+		textureManager.unload();
 	} else if (MainDC) DeleteDC(MainDC), MainDC = nullptr;
 }
 
@@ -113,10 +114,8 @@ void GdiRenderer::resize(const int width, const int height) noexcept(false) {
 	const bool flag = windowWidth != width || windowHeight != height;
 	windowWidth = width;
 	windowHeight = height;
-	deleteDC(canvasDC);
-	deleteDC(assistDC);
-	canvasDC = CreateCompatibleDC(MainDC);
-	assistDC = CreateCompatibleDC(canvasDC);
+	if (!canvasDC) canvasDC = CreateCompatibleDC(MainDC);
+	if (!assistDC) assistDC = CreateCompatibleDC(canvasDC);
 	SetBkMode(canvasDC, TRANSPARENT);
 	SetBkMode(assistDC, TRANSPARENT);
 	deleteObject(canvasBitmap);

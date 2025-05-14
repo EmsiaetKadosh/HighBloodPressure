@@ -7,10 +7,10 @@
 #include "..\game\Game.h"
 
 void Task::initParams() { triggerInterval = 0, nextExecuteTime = game.getTick(), lastExecuteTime = game.getTick(); }
-Task& Task::every(const QWORD tick) { return triggerInterval = tick, *this; }
-Task& Task::after(const QWORD tick) { return nextExecuteTime = game.getTick() + tick, *this; }
-Task& Task::until(const QWORD tick) { return lastExecuteTime = game.getTick() + tick, *this; }
-Task& Task::forever() { return lastExecuteTime = static_cast<QWORD>(-1), *this; }
+Task& Task::every(const QWORD tick) & noexcept { return triggerInterval = tick, *this; }
+Task& Task::after(const QWORD tick) & noexcept { return nextExecuteTime = game.getTick() + tick, *this; }
+Task& Task::until(const QWORD tick) & noexcept { return lastExecuteTime = game.getTick() + tick, *this; }
+Task& Task::forever() & noexcept { return lastExecuteTime = static_cast<QWORD>(-1), *this; }
 
 void TaskScheduler::runAll() {
 	const QWORD tick = game.getTick();

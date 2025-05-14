@@ -1,7 +1,6 @@
 #pragma once
 
 #include "def.h"
-#include "utils\exception.h"
 
 inline HRESULT RemoveDefaultCaption(const HWND hWnd, const MARGINS* p) noexcept { return DwmExtendFrameIntoClientArea(hWnd, p); }
 

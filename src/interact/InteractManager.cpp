@@ -2,6 +2,8 @@
 // Created by EmsiaetKadosh on 25-1-14.
 //
 
+#include "..\hbp.h"
+
 #include "InteractManager.h"
 
 #include "..\ui\Window.h"
@@ -57,6 +59,54 @@ unsigned int KeyBindingClass::wasPressedThenDeal() const noexcept {
 }
 
 String KeyBindingClass::getId() const noexcept { return L"key." + region->id + L"." + id; }
+
+void InteractManager::initialize() noexcept {
+	trackMouseEvent.hwndTrack = MainWindowHandle;
+	KeyRegion& world = keyBindings.registerRegion(L"world");
+	world.newBinding(L"move_left", Keys::A);
+	world.newBinding(L"move_right", Keys::D);
+	world.newBinding(L"move_jump", Keys::Space);
+	world.newBinding(L"move_dodge", Keys::LeftShift);
+	world.newBinding(L"pause", Keys::Escape);
+	world.newBinding(L"speed_tweaker", Keys::Tab);
+	KeyRegion& menu = keyBindings.registerRegion(L"menu");
+	menu.newBinding(L"quit", Keys::Escape);
+	interactManager.setInputMethodEditor(false);
+}
+
+void InteractManager::enableRawInput() noexcept {
+	useRawInput = true;
+	Keys::InnerLeftAlt = Keys::Raw_LeftAlt;
+	Keys::InnerRightAlt = Keys::Raw_RightAlt;
+	Keys::InnerLeftCtrl = Keys::Raw_LeftCtrl;
+	Keys::InnerRightCtrl = Keys::Raw_RightCtrl;
+	Keys::InnerLeftShift = Keys::Raw_LeftShift;
+	Keys::InnerRightShift = Keys::Raw_RightShift;
+}
+
+void InteractManager::update(const unsigned char keyCode, const bool isPressed) noexcept {
+	if (keyCode >= 256) return;
+	if (rebinding) {
+		rebindResult = keyCode;
+		return;
+	}
+	auto& status = keyStatus[keyCode];
+	if (!status.pressed) {
+		++status.pressTimes;
+		status.notDealt = true;
+	}
+	status.pressed = isPressed;
+}
+
+void InteractManager::mouseLeaveCaption() noexcept {
+	outsideWindow &= ~2;
+	hovering = false;
+}
+
+void InteractManager::mouseLeaveClient() noexcept {
+	outsideWindow &= ~1;
+	hovering = false;
+}
 
 InteractManager::InteractManager() {
 	keyStatus[0x00].name = L"NONE";
@@ -325,6 +375,24 @@ void InteractManager::updateMouse(const int x, const int y) noexcept {
 	if (!TrackMouseEvent(&trackMouseEvent)) Logger.error(L"TrackMouseEvent failed. LastError: " + std::to_wstring(GetLastError()));
 }
 
+void InteractManager::setInputMethodEditor(const bool focusing) noexcept {
+	static HIMC imc = nullptr;
+	static DWORD conversionMode = 0, sentenceMode = 0;
+	if (useIme == focusing) return;
+	useIme = focusing;
+	if (focusing) {
+		Logger.debug(L"enable ime");
+		if (imc) ImmSetConversionStatus(imc, conversionMode, sentenceMode);
+		ImmAssociateContext(MainWindowHandle, imc);
+		ImmSetOpenStatus(imc, true);
+	} else if (!imc) {
+		Logger.debug(L"disable ime");
+		imc = ImmGetContext(MainWindowHandle);
+		if (imc) ImmGetConversionStatus(imc, &conversionMode, &sentenceMode);
+		ImmAssociateContext(MainWindowHandle, nullptr);
+	}
+}
+
 bool InteractManager::isInSizeBox() const noexcept { return isInWindow() && !isInClientCaption(); }
 bool InteractManager::isInClient() const noexcept { return mouseX > interactSettings.actual.marginWidth && mouseX < renderer.getSyncWidth() - interactSettings.actual.marginWidth && mouseY > interactSettings.actual.captionHeight && mouseY < renderer.getSyncHeight() - interactSettings.actual.marginWidth; }
 bool InteractManager::isInCaption() const noexcept { return mouseX > interactSettings.actual.marginWidth && mouseX < renderer.getSyncWidth() - interactSettings.actual.marginWidth && mouseY > interactSettings.actual.marginWidth && mouseY < interactSettings.actual.captionHeight; }
@@ -332,10 +400,17 @@ bool InteractManager::isInClientCaption() const noexcept { return mouseX > inter
 
 MouseButtonCode InteractManager::getMouseButtonCode() const noexcept { return (keyStatus[VK_LBUTTON].isPressed() ? static_cast<unsigned int>(MouseButtonCodeEnum::MBC_L_DOWN) : 0) | (keyStatus[VK_RBUTTON].isPressed() ? static_cast<int>(MouseButtonCodeEnum::MBC_R_DOWN) : 0) | (keyStatus[VK_MBUTTON].isPressed() ? static_cast<int>(MouseButtonCodeEnum::MBC_M_DOWN) : 0); }
 
+int InteractManager::dealMouseWheel() noexcept {
+	const int ret = mouseWheel;
+	mouseWheel = 0;
+	return ret;
+}
+
 void InteractSettings::resizeSetSystemScale(const double scale) {
 	constants.systemScale = scale;
 	actual.uiScale = scale * options.uiScale;
 	actual.mapScale = scale * options.mapScale;
+	actual.fontHeight = static_cast<int>(scale * options.fontHeight);
 }
 
 void InteractSettings::setUiScale(const double scale) {
@@ -348,3 +423,9 @@ void InteractSettings::setMapScale(const double scale) {
 	options.mapScale = scale;
 	actual.mapScale = constants.systemScale * options.mapScale;
 }
+
+void InteractSettings::setScreenScale(const double scale) {
+	actual.captionHeight = static_cast<int>(options.captionHeight * scale);
+	actual.marginWidth = static_cast<int>(options.marginWidth * scale);
+}
+
