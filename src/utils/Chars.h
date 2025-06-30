@@ -81,10 +81,12 @@ static constexpr wchar Table16[17] = L"0123456789ABCDEF";
 	return ret;
 }
 
+inline String ptrtow(const QWORD value) { return qwtowb16(value, 16); }
+
 [[nodiscard]] inline String qwtowb10(QWORD value, const unsigned int fills = 1) noexcept {
 	static constexpr wchar Table10[11] = L"0123456789";
 	static constexpr QWORD Compare10[20] = {
-		0ull, 10ull, 100ull, 1000ull, 10000ull, 100000ull, 1000000ull, 10000000ull,
+		1ull, 10ull, 100ull, 1000ull, 10000ull, 100000ull, 1000000ull, 10000000ull,
 		100000000ull, 1000000000ull, 10000000000ull, 100000000000ull,
 		1000000000000ull, 10000000000000ull, 100000000000000ull,
 		1000000000000000ull, 10000000000000000ull, 100000000000000000ull,

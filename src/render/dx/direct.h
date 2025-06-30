@@ -69,7 +69,7 @@ public:
 		}
 	}
 
-	IRenderer& postInitialize() noexcept override { return initialize(), fontManager = new DirectFontManager(this), *this; }
+	IRenderer& postInitialize() noexcept override { return initialize(), *this; }
 	void initialize() noexcept(false);
 	void awaitFrame() noexcept(false);
 	void render() noexcept(false);

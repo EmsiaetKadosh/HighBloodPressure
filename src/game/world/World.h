@@ -169,6 +169,7 @@ class WorldManager {
 	Map<WorldID, World*> worlds;
 	World* current = nullptr;
 	KeyBinding& speedTweaker = *interactManager.getKeyBindingManager().getRegion(L"world").getBinding(L"speed_tweaker");
+	QWORD currentTick = 0;
 	using IterWorld = Map<WorldID, World*>::const_iterator;
 	WorldManager() = default;
 
@@ -209,7 +210,8 @@ public:
 		return world->second;
 	}
 
-	void tick() const;
+	QWORD getTick() const noexcept { return currentTick; }
+	void tick();
 };
 
 class StartWorld final : public World {

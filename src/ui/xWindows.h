@@ -33,8 +33,8 @@ class StartWindow final : public Window {
 public:
 	static StartWindow* create() noexcept { return allocatedFor(new StartWindow()); }
 
-	void render(const double tickDelta, QWORD tickRendering) const noexcept override {
-		renderer.getFontManager().getDefault().drawCenter(title.getRenderableString(), 0, 0, renderer.getWidth(), renderer.getHeight());
+	void render(const double tickDelta, const QWORD tickRendering) const noexcept override {
+		fontManager.getDefault().drawCenter(title.getRenderableString(), 0, 0, renderer.getWidth(), renderer.getHeight());
 		Window::render(tickDelta, tickRendering);
 	}
 };
@@ -42,14 +42,19 @@ public:
 class SettingsWindow final : public Window {
 	Animation animation = Animation();
 	SettingsWindow() {
-		TextBar* bar = static_cast<TextBar*>(widgets.emplace_back(TextBar(0.1, -0.1, 0.8, 0.2, UILocation::LEFT)).ptr());
+		TextBar* bar;
+		widgets.emplace_back(&bar, 0.1, -0.1, 0.8, 0.2, UILocation::LEFT);
 		animation.setDuration(20).depends(Animation::AD_TIME).features(Animation::AS_CUBIC);
 	}
 
 public:
 	static SettingsWindow* create() noexcept { return allocatedFor(new SettingsWindow()); }
 	void tick() noexcept(false) override {
-		if (interactManager.getKey(Keys::Escape).wasPressed()) game.closeWindow(this);
+		if (interactManager.getKey(Keys::Escape).wasPressedAndDeal()) game.closeWindow(this);
 		;
+	}
+	void render(const double tickDelta, const QWORD tickRendering) const noexcept override {
+		renderer.fill(0, 0, renderer.getWidth(), renderer.getHeight(), 0x99000000);
+		__super::render(tickDelta, tickRendering);
 	}
 };

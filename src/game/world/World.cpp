@@ -7,6 +7,7 @@
 #include "World.h"
 #include "..\Game.h"
 #include "xBlocks.h"
+#include "..\..\ui\xWindows.h"
 
 void World::onRemove() noexcept(false) {
 	// Entity不需要在此处删除，交给EntityManager管理
@@ -14,7 +15,7 @@ void World::onRemove() noexcept(false) {
 		entity->onExitWorld(this, WorldTransportReason::WorldCollapse);
 		entity->changeWorld(0);
 		entity->world = nullptr;
-		game.entityManager->removeEntity(entity);
+		game.getEntityManager().removeEntity(entity);
 	}
 	for (auto& [location, block] : blocks) {
 		block->onExitWorld(this, WorldTransportReason::WorldCollapse);
@@ -29,53 +30,37 @@ void World::onRemove() noexcept(false) {
 }
 
 void World::adaptEntityVelocity(Entity& entity) const noexcept(false) {
-	if (!entity.world) return entity.momentum.velocityTick = game.getTick(), void();
-	if (entity.world != this) return entity.momentum.velocityTick = game.getTick(), void();
-	if (entity.getLocation().getWorld() != idWorld) return entity.momentum.velocityTick = game.getTick(), void();
+	if (!entity.world) return entity.momentum.velocityTick = game.getWorldManager().getTick(), void();
+	if (entity.world != this) return entity.momentum.velocityTick = game.getWorldManager().getTick(), void();
+	if (entity.getLocation().getWorld() != idWorld) return entity.momentum.velocityTick = game.getWorldManager().getTick(), void();
 	entity.momentum.velocity.periods.clear(); // 此函数在此处不需要atomicAcquire；实际上assert entity.momentum.velocity.periods.empty();
-	Vector2D restCurrent = entity.velocity, rest = entity.velocity, velocity = entity.velocity;
+	// restCurrent: 实时更新的余量; rest: 当前order总余量; movement: 当前移动
+	Vector2D restCurrent = entity.velocity, rest = entity.velocity, movement = entity.velocity;
 	Vector2D position = entity.momentum.location.getPosition();
-	double length = 0;
 	double timeLeft = 1;
 	while (true) {
-		length = rest.length();
-		if (dEquals(length, 0) || timeLeft <= 0) break;
+		if (dEquals(rest.lengthManhattan(), 0) || timeLeft <= 0) break;
 		const auto& [blocks, _] = boundingBoxCollideBlocks(entity.boundingBox, position /* 此处在Entity::tick中确保是最新的 */, rest);
 		unsigned int currentOrder = static_cast<unsigned int>(-1);
 		for (const BoundingBoxCollideBlockResult& result : blocks) {
 			const Block* block = getBlockAt(result.getBlockLocation());
 			if (!block) continue;
 			if (currentOrder != static_cast<unsigned int>(-1) && result.getOrder() != currentOrder) break; // 进行过了修改，当前order计算完以后就停止计算
-			if (block->adaptEntityVelocity(entity, position, velocity, rest, restCurrent, result.getCollidingSide())) currentOrder = result.getOrder();
+			if (block->adaptEntityVelocity(entity, position, movement, rest, restCurrent, result.getCollidingSide())) currentOrder = result.getOrder();
 		}
-		double timeCost = velocity.length() * timeLeft / length;
+		// 此时：restCurrent为余量，movement为当前移动
+		double timeCost = movement.length() * timeLeft / rest.length();
 		if (timeCost > timeLeft) timeCost = timeLeft;
-		entity.momentum.velocity.periods.emplace_back(velocity, timeCost);
+		entity.momentum.velocity.periods.emplace_back(movement, timeCost);
 		timeLeft -= timeCost;
-		/*
-		// TODO(EmsiaetKadosh): test
-		Logger.trace(
-			L"\n    position     = " + position.toString() +
-			L"\n    velocity     = " + velocity.toString() +
-			L"\n    rest         = " + rest.toString() +
-			L"\n    restCurrent  = " + restCurrent.toString() +
-			L"\n    boundingBox  = " + entity.getBoundingBox().toString(position)
-		);
-		// test ^^^
-		*/
 		if (restCurrent.lengthManhattan() == 0) break;
-		position.add(velocity);
-		/*
-		// TODO(EmsiaetKadosh): test
-		if (position.getY() > 1) throw RuntimeException(L"Wrong position");
-		// test ^^^
-		*/
-		restCurrent.strictSelect(rest - velocity);
+		position.add(movement);
+		restCurrent.strictSelect(rest - movement);
 		rest = restCurrent;
-		velocity = restCurrent;
+		movement = restCurrent;
 	}
 	if (!dEquals(timeLeft, 0)) entity.momentum.velocity.periods.emplace_back(Vector2D(), 0);
-	entity.momentum.velocityTick = game.getTick();
+	entity.momentum.velocityTick = game.getWorldManager().getTick();
 }
 
 RayTraceResults World::rayTraceBlocks(const Vector2D& startAt, const Vector2D& direction) const noexcept(false) {
@@ -157,21 +142,6 @@ RayTraceResults World::rayTraceBlocks(const Vector2D& startAt, const Vector2D& d
 			// 负叉乘：逆时针转一下（指的是，方块中心到撞击边/角的偏移）
 			const Vector2D fix = (cross > 0 ? CollidingSide::fromVector2D(fourWay).getClockwiseRotated() : CollidingSide::fromVector2D(fourWay).getAntiClockwiseRotated()).getDirectionBlock().multiply(0.5); // 修正向量，方块中心->被碰撞的一边
 			Vector2D ex = fix.getX() == 0 ? direction.clone().extendValueY(block.getY() + fix.getY() - startAt.getY()) : direction.clone().extendValueX(block.getX() + fix.getX() - startAt.getX());
-			if (ex.isZero() && false) {
-				Logger.warn(
-					L"Vector2D::extendValue X/Y returned zero Vector2D:"
-					L"\n    startAt: " + startAt.toString() +
-					L"\n    direction: " + direction.toString() +
-					L"\n    blockCenter: " + block.toString() +
-					L"\n    antimatterRelativeP1: " + amRelativeP1.toString() +
-					L"\n    cross: " + std::to_wstring(cross) +
-					L"\n    fix: " + fix.toString() +
-					L"\n    fourWay: " + fourWay.toString() +
-					L"\n    ex: " + ex.toString()
-					);
-				pass;
-				// throw ZeroValueException(L"Vector2D::extendValue X/Y returned zero Vector2D:");
-			}
 			ex.add(startAt);
 			if (fix.getX() == 0) ex.setY(std::round(ex.getY()));
 			else ex.setX(std::round(ex.getX()));
@@ -302,11 +272,13 @@ BoundingBoxCollideResults World::boundingBoxCollideBlocks(const BoundingBox& bou
 	return results;
 }
 
-void WorldManager::tick() const noexcept(false) {
+void WorldManager::tick() noexcept(false) {
+	++currentTick;
 	Block* blockMousePointing = current ? current->getBlockAt(renderer.mousePointingAtBlock) : nullptr;
-	if (!game.getWindow()) { // 世界操作处理
-		if (int c = interactManager.dealMouseWheel(); c < 0) while (c++) interactSettings.actual.mapScale *= 0.96;
-		else if (c > 0) while (c--) interactSettings.actual.mapScale *= 1.05;
+	if (!game.getWindow()) {
+		// 世界操作处理
+		if (int c = interactManager.dealMouseWheel(); c < 0) while (c++ && interactSettings.actual.mapScale > 2) interactSettings.modifyMapScale(-2);
+		else if (c > 0) while (c-- && interactSettings.actual.mapScale < 512) interactSettings.modifyMapScale(2);
 		if (current && interactManager.isInClient()) {
 			if (interactManager.getKey(Keys::RightButton).isPressed()) if (blockMousePointing) current->removeBlockAt(renderer.mousePointingAtBlock.ofWorld(current->idWorld), WorldTransportReason::Debug), blockMousePointing->onRemove();
 			if (interactManager.getKey(Keys::LeftButton).isPressed() && !blockMousePointing) {
@@ -314,13 +286,14 @@ void WorldManager::tick() const noexcept(false) {
 				else current->addBlock(game.newInstanceOf<TimedBarrierBlock>(renderer.mousePointingAtBlock.ofWorld(current->idWorld)), WorldTransportReason::Debug);
 			}
 		}
+		if (interactManager.getKey(Keys::Escape).wasPressedAndDeal()) game.setWindow(SettingsWindow::create());
 	}
 	if (current) { // 世界执行刻
 		if (!game.getWindow() || game.getWindow()) current->tick();
 		if (interactManager.isInClient()) {
 			renderer.mousePointingAtBlock.setWorld(current->idWorld);
-			game.getFloatWindow().push(L"\\#ffee66dd"_mark_renderable + renderer.mousePointingAtBlock.toString());
-			game.getFloatWindow().push(L"\\#ffee0000"_mark_renderable + renderer.mousePointingAtWorld.toString(!interactManager.getKey(Keys::Tab).isPressedAndDeal()));
+			game.getFloatWindow().push(L"\\#ffee66dd" + renderer.mousePointingAtBlock.toString());
+			game.getFloatWindow().push(L"\\#ffee0000" + renderer.mousePointingAtWorld.toString(!interactManager.getKey(Keys::Tab).isPressedAndDeal()));
 			if (blockMousePointing) for (RenderableString& r : blockMousePointing->getDescription()) game.getFloatWindow().push(std::move(r));
 		}
 		if (speedTweaker.wasPressedThenDeal()) {
@@ -333,23 +306,8 @@ void WorldManager::tick() const noexcept(false) {
 StartWorld* StartWorld::create() {
 	StartWorld* world = allocatedFor(new StartWorld);
 	Block* block;
-	if (world->addBlock(block = game.newInstanceOf<PureBarrierBlock>(BlockLocation(-5, 1)), WorldTransportReason::InitialGeneration)) block->onRemove();
-	if (world->addBlock(block = game.newInstanceOf<PureBarrierBlock>(BlockLocation(-4, 1)), WorldTransportReason::InitialGeneration)) block->onRemove();
-	if (world->addBlock(block = game.newInstanceOf<PureBarrierBlock>(BlockLocation(-3, 1)), WorldTransportReason::InitialGeneration)) block->onRemove();
-	if (world->addBlock(block = game.newInstanceOf<PureBarrierBlock>(BlockLocation(-2, 1)), WorldTransportReason::InitialGeneration)) block->onRemove();
-	if (world->addBlock(block = game.newInstanceOf<PureBarrierBlock>(BlockLocation(-1, 1)), WorldTransportReason::InitialGeneration)) block->onRemove();
-	if (world->addBlock(block = game.newInstanceOf<PureBarrierBlock>(BlockLocation(0, 1)), WorldTransportReason::InitialGeneration)) block->onRemove();
-	else dynamic_cast<PureBarrierBlock*>(block)->setColor(0xff4488ee);
-	if (world->addBlock(block = game.newInstanceOf<PureBarrierBlock>(BlockLocation(1, 1)), WorldTransportReason::InitialGeneration)) block->onRemove();
-	if (world->addBlock(block = game.newInstanceOf<PureBarrierBlock>(BlockLocation(2, 1)), WorldTransportReason::InitialGeneration)) block->onRemove();
-	if (world->addBlock(block = game.newInstanceOf<PureBarrierBlock>(BlockLocation(3, 1)), WorldTransportReason::InitialGeneration)) block->onRemove();
-	if (world->addBlock(block = game.newInstanceOf<PureBarrierBlock>(BlockLocation(4, 1)), WorldTransportReason::InitialGeneration)) block->onRemove();
-	if (world->addBlock(block = game.newInstanceOf<PureBarrierBlock>(BlockLocation(5, 1)), WorldTransportReason::InitialGeneration)) block->onRemove();
-	for (long i = 6; i < 30; ++i) {
-		if (world->addBlock(block = BrickBlock::create(BlockLocation(i, 1)), WorldTransportReason::InitialGeneration)) block->onRemove();
-		if (world->addBlock(block = BrickBlock::create(BlockLocation(-i, 1)), WorldTransportReason::InitialGeneration)) block->onRemove();
-		if (world->addBlock(block = BrickBlock::create(BlockLocation(i, -4)), WorldTransportReason::InitialGeneration)) block->onRemove();
-		if (world->addBlock(block = BrickBlock::create(BlockLocation(-i, -4)), WorldTransportReason::InitialGeneration)) block->onRemove();
+	for (int i = -30; i < 31; ++i) for (int j = 0; j < 3; ++j) {
+		if (world->addBlock(block = game.newInstanceOf<BrickBlock>(BlockLocation(i, j * 5 - 6)), WorldTransportReason::InitialGeneration)) block->onRemove();
 	}
 	return world;
 }

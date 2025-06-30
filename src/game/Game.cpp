@@ -18,20 +18,25 @@ void Game::initialize() {
 Game::Game() : caption{ allocatedFor(new CaptionWindow()) }, floatWindow{ allocatedFor(new FloatWindow()) } {
 	Logger.put(L"Game created");
 	random.seed(static_cast<unsigned int>(getCurrentTime().time_since_epoch().count()));
+	initializerChecker.registerModule(L"Game");
 }
 
 Game::~Game() {
 	setWindow(nullptr);
 	delete deallocating(floatWindow);
+	floatWindow = nullptr;
 	gc.pack();
 	gc.collect();
 	delete deallocating(caption);
+	caption = nullptr;
 	gc.pack();
 	gc.collect();
 	delete deallocating(worldManager);
+	worldManager = nullptr;
 	gc.pack();
 	gc.collect();
 	delete deallocating(entityManager);
+	entityManager = nullptr;
 	gc.pack();
 	gc.collect();
 }
@@ -49,10 +54,10 @@ void Game::render(const double tickDelta, const QWORD tickRendering) const noexc
 		worldManager->current->render(tickDelta, tickRendering);
 		renderer.renderMouseWorld();
 	}
-	caption->render(tickDelta, tickRendering);
 	hud.render(tickDelta, tickRendering);
 	windows.render(tickDelta, tickRendering);
 	floatWindow->render(tickDelta, tickRendering);
+	caption->render(tickDelta, tickRendering);
 	renderer.gameEndRender();
 	gc.pack();
 }
@@ -91,12 +96,10 @@ void Game::tick() noexcept(false) {
 	floatWindow->clear();
 	floatWindow->tick();
 	renderer.tick();
-	if (!windows.pausesGame()) worldManager->tick();
+	if (!windows.pausesGame() && (!options.gaming.timeFreeze || ++tickFreeze >= options.gaming.timeFreezeRatio)) tickFreeze = 0, worldManager->tick();
 	caption->tick();
 	hud.tick();
 	windows.tick();
 	tasks.runAll();
 	gc.collect();
 }
-
-inline Game game = Game();

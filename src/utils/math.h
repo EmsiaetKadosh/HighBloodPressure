@@ -292,11 +292,11 @@ public:
 	[[nodiscard]] Vector2D nearestPointFromNormalized(const Vector2D& point, const Vector2D& direction) const noexcept { return point + direction * clone().subtract(point).dot(direction); }
 
 	Vector2D& strictSelect(const Vector2D& other) noexcept {
-		if (other.x > 0) x = x > 0 ? nMin(x, other.x) : 0;
-		else if (other.x < 0) x = x < 0 ? nMax(x, other.x) : 0;
+		if (other.x > 0) x = nRange(x, 0.0, other.x);
+		else if (other.x < 0) x = nRange(x, other.x, 0.0);
 		else x = 0;
-		if (other.y > 0) y = y > 0 ? nMin(y, other.y) : 0;
-		else if (other.y < 0) y = y < 0 ? nMax(y, other.y) : 0;
+		if (other.y > 0) y = nRange(y, 0.0, other.y);
+		else if (other.y < 0) y = nRange(y, other.y, 0.0);
 		else y = 0;
 		return *this;
 	}

@@ -6,13 +6,142 @@
 #include "Entity.h"
 #include "..\world\World.h"
 
+void BoundingBox::getFarthestOffset(Vector2D& outPointPositive, Vector2D& outPointNegative, const Vector2D& direction) const noexcept {
+	QWORD min, max;
+	const double values[] = {
+		direction.cross(getLeftTopOffset()).getZ(),
+		direction.cross(getRightTopOffset()).getZ(),
+		direction.cross(getLeftBottomOffset()).getZ(),
+		direction.cross(getRightBottomOffset()).getZ()
+	};
+	nMinMaxOf<double>(min, max, 4, values);
+	switch (max) {
+		case 0:
+			outPointPositive = getLeftTopOffset();
+			break;
+		case 1:
+			outPointPositive = getRightTopOffset();
+			break;
+		case 2:
+			outPointPositive = getLeftBottomOffset();
+			break;
+		case 3:
+			outPointPositive = getRightBottomOffset();
+			break;
+		default:
+			unreachable();
+	}
+	switch (min) {
+		case 0:
+			outPointNegative = getLeftTopOffset();
+			break;
+		case 1:
+			outPointNegative = getRightTopOffset();
+			break;
+		case 2:
+			outPointNegative = getLeftBottomOffset();
+			break;
+		case 3:
+			outPointNegative = getRightBottomOffset();
+			break;
+		default:
+			unreachable();
+	}
+}
+
+void BoundingBox::getForefrontOffset(Vector2D& outPointForward, Vector2D& outPointBackward, const Vector2D& direction) const noexcept {
+	QWORD min, max;
+	const double values[] = {
+		direction.dot(getLeftTopOffset()),
+		direction.dot(getRightTopOffset()),
+		direction.dot(getLeftBottomOffset()),
+		direction.dot(getRightBottomOffset())
+	};
+	nMinMaxOf<double>(min, max, 4, values);
+	switch (max) {
+		case 0:
+			outPointForward = getLeftTopOffset();
+			break;
+		case 1:
+			outPointForward = getRightTopOffset();
+			break;
+		case 2:
+			outPointForward = getLeftBottomOffset();
+			break;
+		case 3:
+			outPointForward = getRightBottomOffset();
+			break;
+		default:
+			unreachable();
+	}
+	switch (min) {
+		case 0:
+			outPointBackward = getLeftTopOffset();
+			break;
+		case 1:
+			outPointBackward = getRightTopOffset();
+			break;
+		case 2:
+			outPointBackward = getLeftBottomOffset();
+			break;
+		case 3:
+			outPointBackward = getRightBottomOffset();
+			break;
+		default:
+			unreachable();
+	}
+}
+
+RECT BoundingBox::getCoveringBlocks(const Vector2D& position) const noexcept {
+	if constexpr (false) {
+		RECT ret;
+		const double
+			left = position.getX() - getLeft(),
+			top = position.getY() - getTop(),
+			right = position.getX() + getRight(),
+			bottom = position.getY() + getBottom();
+		double temp;
+		if (dEquals(left, temp = std::ceil(left))) ret.left = static_cast<long>(temp);
+		else ret.left = static_cast<long>(std::floor(left));
+		if (dEquals(right, temp = std::floor(right))) ret.right = static_cast<long>(temp);
+		else ret.right = static_cast<long>(std::ceil(right));
+		if (dEquals(top, temp = std::ceil(top))) ret.top = static_cast<long>(temp);
+		else ret.top = static_cast<long>(std::floor(top));
+		if (dEquals(bottom, temp = std::floor(bottom))) ret.bottom = static_cast<long>(temp);
+		else ret.bottom = static_cast<long>(std::ceil(bottom));
+		return ret;
+	}
+	return {
+		.left = static_cast<long>(std::floor(position.getX() - getLeft())),
+		.top = static_cast<long>(std::floor(position.getY() - getTop())),
+		.right = static_cast<long>(std::ceil(position.getX() + getRight())),
+		.bottom = static_cast<long>(std::ceil(position.getY() + getBottom()))
+	};
+}
+
+Vector2D Velocity::getRelativeLocation(double tickDelta) const noexcept {
+	Vector2D ret;
+	for (const auto& [movement, tickLasts] : periods)
+		if (tickDelta > tickLasts) {
+			tickDelta -= tickLasts;
+			ret += movement;
+		} else if (tickLasts != 0) ret += movement * nRange(tickDelta / tickLasts, 0.0, 1.0);
+	return ret; // 此处估计是tickDelta大于1了，反正无所谓，已经全部加起来了
+}
+
+String Velocity::toString() const noexcept {
+	std::wostringstream stream;
+	for (const auto& [movement, tickLasts] : periods) stream << L"\n    movement: " << movement.toString() << L"\n    tickLasts: " << tickLasts << L"\n  --------";
+	return stream.str();
+}
+
 void Entity::updatePosition() noexcept {
-	if (momentum.locationTick == game.getTick()) return; // 保护同一tick多次调用
+	if (momentum.locationTick == game.getWorldManager().getTick()) return; // 保护同一tick多次调用
 	momentum.atomicAcquire();
 	momentum.lastLocation = momentum.location;
 	momentum.location.setPosition(momentum.location.getPosition() + momentum.velocity.getRelativeLocation(2));
-	momentum.locationTick = game.getTick();
-	momentum.velocity.periods.empty() ? velocity.setX(0).setY(0) : velocity = momentum.velocity.periods.back().movement;
+	momentum.locationTick = game.getWorldManager().getTick();
+	momentum.velocity.periods.empty() ? velocity.setX(0).setY(0) : velocity = momentum.velocity.getLastVelocity();
 	momentum.lastVelocity.periods.clear();
 	momentum.velocity.periods.swap(momentum.lastVelocity.periods);
 	momentum.atomicRelease();
@@ -41,6 +170,28 @@ void Entity::onDamage(Damage& damage) {
 
 void Entity::onDeath() {}
 
+void Entity::setHealth(const double health) noexcept {
+	if (health < 0) this->health = 0;
+	else if (health > maxHealth) this->health = maxHealth;
+	else this->health = health;
+}
+
+void Entity::setMaxHealth(const double health) noexcept {
+	if (health < 0) maxHealth = 0;
+	else maxHealth = health;
+}
+
+void Entity::setBloodPressure(const double pressure) noexcept {
+	if (pressure < 0) bloodPressure = 0;
+	else if (pressure > maxBloodPressure) bloodPressure = maxBloodPressure;
+	else bloodPressure = pressure;
+}
+
+void Entity::setMaxBloodPressure(const double pressure) noexcept {
+	if (pressure < 0) maxBloodPressure = 0;
+	else maxBloodPressure = pressure;
+}
+
 void Entity::tick() noexcept(false) {
 	updatePosition();
 	if (!world) return;
@@ -68,7 +219,7 @@ void Entity::render(const double tickDelta, const QWORD tickRendering) const noe
 void Entity::teleport(const Vector2D& location) noexcept {
 	momentum.atomicAcquire();
 	momentum.location.setPosition(location);
-	momentum.locationTick = game.getTick();
+	momentum.locationTick = game.getWorldManager().getTick();
 	momentum.velocity.periods.clear();
 	momentum.atomicRelease();
 }
@@ -77,7 +228,7 @@ void Entity::changeWorld(const WorldID id, const bool discardMovements) noexcept
 	momentum.atomicAcquire();
 	momentum.location.setWorld(id);
 	if (discardMovements) {
-		momentum.locationTick = game.getTick();
+		momentum.locationTick = game.getWorldManager().getTick();
 		momentum.velocity.periods.clear();
 	}
 	momentum.atomicRelease();

@@ -6,6 +6,8 @@
 
 #include "..\..\def.h"
 #include "..\..\utils\gc.h"
+#include "..\..\utils\IText.h"
+#include "..\Description.hpp"
 #include "Location.h"
 #include "..\gameDef.h"
 #include "..\entity\Entity.h"
@@ -16,7 +18,7 @@ class [[carlbeks::predecl, carlbeks::defineat("World.h")]] World;
  * @note 所有的继承类都必须
  * @code friend class Game @endcode
  */
-class Block : public IRenderable, public ITickable {
+class Block : public IDescribable, public IRenderable, public ITickable {
 	friend class Garbage<Block>;
 	friend class World;
 	World* world = nullptr;
@@ -43,21 +45,21 @@ public:
 	 * @brief 调整一个实体与该方块交互时的速度。
 	 * @param entity 目标实体
 	 * @param position 实体当前判定到的位置
-	 * @param velocity 可以直接进行、经过其他方块截短调整的速度
+	 * @param movement 可以直接进行、经过其他方块截短调整的速度
 	 * @param rest 本次调整的原始速度
 	 * @param currentRest 经过其他方块调整后的剩余速度
 	 * @param side 碰撞方向
 	 * @returns (bool) true - 进行了修改; false - 没有进行修改
 	 * @attention 函数内方块状态不要发生变化。该函数只是试探性调整速度，且只进行速度的截短，并不是真正的碰撞交互。
 	 */
-	virtual bool adaptEntityVelocity(Entity& entity, const Vector2D& position, Vector2D& velocity, const Vector2D& rest, Vector2D& currentRest, CollidingSide side) const;
+	virtual bool adaptEntityVelocity(Entity& entity, const Vector2D& position, Vector2D& movement, const Vector2D& rest, Vector2D& currentRest, CollidingSide side) const;
 	virtual bool checkEntityOnGround(Entity& entity) const { return dEquals(entity.getLocation().getY() + entity.getBoundingBox().getBottom(), static_cast<double>(location.getY())); }
 
-	[[nodiscard]] virtual Vector<RenderableString> getDescription() const {
-		return Vector{
-			L"\\#ffee0000<UnknownBlock>"_renderable,
-			RenderableString(L"\\#ffee0000- " + location.toString())
-		};
+	[[nodiscard]] Description getDescription() const override {
+		return
+			Description()
+			.title(L"\\#ffee0000<UnknownBlock>"_renderable)
+			.textline(L"\\#ffee0000" + location.toString());
 	}
 };
 
@@ -72,12 +74,12 @@ public:
 	void tick() noexcept(false) override {}
 	void setColor(const unsigned int color) noexcept { this->color = color; }
 
-	[[nodiscard]] Vector<RenderableString> getDescription() const override {
-		return Vector{
-			L"PureBarrierBlock"_renderable,
-			RenderableString(L"- " + getLocation().toString()),
-			RenderableString(L"- Color: \\#" + qwtowb16(color, 8) + L"#" + qwtowb16(color, 8))
-		};
+	[[nodiscard]] Description getDescription() const override {
+		return
+			Description()
+			.title(L"PureBarrierBlock"_renderable)
+			.textline(getLocation().toString())
+			.textline(L"Color: \\#" + qwtowb16(color, 8) + L"#" + qwtowb16(color, 8));
 	}
 };
 
@@ -87,14 +89,14 @@ class TestBarrierBlock final : public Block {
 	~TestBarrierBlock() override = default;
 
 public:
-	void render(double tickDelta, QWORD tickRendering) const noexcept override { renderer.textureWorld(textureManager.getNullTexture(), getLocation().getPosition()); }
+	void render(double tickDelta, QWORD tickRendering) const noexcept override { renderer.textureWorld(textureManager.getTexture(L"hbp\\block\\barrier"), getLocation().getPosition()); }
 	void tick() noexcept(false) override {}
 
-	[[nodiscard]] Vector<RenderableString> getDescription() const override {
-		return Vector{
-			L"TestBarrierBlock"_renderable,
-			RenderableString(L"- " + getLocation().toString())
-		};
+	[[nodiscard]] Description getDescription() const override {
+		return
+			Description()
+			.title(L"TestBarrierBlock"_renderable)
+			.textline(getLocation().toString());
 	}
 };
 
@@ -108,11 +110,11 @@ public:
 	void render(double tickDelta, QWORD tickRendering) const noexcept override;
 	void tick() noexcept(false) override;
 
-	[[nodiscard]] Vector<RenderableString> getDescription() const override {
-		return Vector{
-			L"TimedBarrierBlock"_renderable,
-			RenderableString(L"- " + getLocation().toString()),
-			RenderableString(L"- timeLeft: " + std::to_wstring(time))
-		};
+	[[nodiscard]] Description getDescription() const override {
+		return
+			Description()
+			.title(L"TimedBarrierBlock"_renderable)
+			.textline(getLocation().toString())
+			.textline(L"timeLeft: " + std::to_wstring(time));
 	}
 };

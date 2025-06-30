@@ -4,6 +4,8 @@
 
 #pragma once
 
+#include "..\global.hpp"
+
 #include "..\def.h"
 
 struct Keys {
@@ -429,6 +431,7 @@ public:
 
 class InteractManager {
 	KeyBindingManager keyBindings;
+	Function<void()> inputListener;
 	TRACKMOUSEEVENT trackMouseEvent{
 		.cbSize = sizeof(TRACKMOUSEEVENT),
 		.dwFlags = TME_HOVER | TME_LEAVE,
@@ -472,8 +475,6 @@ public:
 	int dealMouseWheel() noexcept;
 };
 
-inline InteractManager interactManager = InteractManager();
-
 class InteractSettings {
 	[[carlbeks::predecl, carlbeks::defineat("renderer.h")]] friend class IRenderer;
 	void resizeSetSystemScale(double scale);
@@ -487,7 +488,7 @@ public:
 		int marginWidth = 40;
 		int fontHeight = 64;
 		int floatWindowMargin = 16;
-		double mapScale = 128.0; // 1格表现为mapScale像素
+		unsigned int mapScale = 128; // 1格表现为mapScale像素
 		double uiScale = 1; // UI的缩放比例
 	};
 
@@ -512,8 +513,8 @@ public:
 	 * @note 该方法调用renderer.requireResize()。在resize时设置scale请调用private:resizeSetUiScale()
 	 */
 	void setUiScale(double scale);
-	void setMapScale(double scale);
+	void setMapScale(unsigned int scale);
 	void setScreenScale(double scale);
+	void modifyUiScale(double scale);
+	void modifyMapScale(int scale);
 };
-
-inline InteractSettings interactSettings = InteractSettings();

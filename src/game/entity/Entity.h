@@ -52,122 +52,12 @@ public:
 	[[nodiscard]] Vector2D getLeftBottomOffset() const noexcept { return Vector2D(-left, bottom); }
 	[[nodiscard]] Vector2D getRightBottomOffset() const noexcept { return Vector2D(right, bottom); }
 
-	void getFarthestOffset(Vector2D& outPointPositive, Vector2D& outPointNegative, const Vector2D& direction) const noexcept {
-		QWORD min, max;
-		const double values[] = {
-			direction.cross(getLeftTopOffset()).getZ(),
-			direction.cross(getRightTopOffset()).getZ(),
-			direction.cross(getLeftBottomOffset()).getZ(),
-			direction.cross(getRightBottomOffset()).getZ()
-		};
-		nMinMaxOf<double>(min, max, 4, values);
-		switch (max) {
-			case 0:
-				outPointPositive = getLeftTopOffset();
-				break;
-			case 1:
-				outPointPositive = getRightTopOffset();
-				break;
-			case 2:
-				outPointPositive = getLeftBottomOffset();
-				break;
-			case 3:
-				outPointPositive = getRightBottomOffset();
-				break;
-			default:
-				unreachable();
-		}
-		switch (min) {
-			case 0:
-				outPointNegative = getLeftTopOffset();
-				break;
-			case 1:
-				outPointNegative = getRightTopOffset();
-				break;
-			case 2:
-				outPointNegative = getLeftBottomOffset();
-				break;
-			case 3:
-				outPointNegative = getRightBottomOffset();
-				break;
-			default:
-				unreachable();
-		}
-	}
-
-	void getForefrontOffset(Vector2D& outPointForward, Vector2D& outPointBackward, const Vector2D& direction) const noexcept {
-		QWORD min, max;
-		const double values[] = {
-			direction.dot(getLeftTopOffset()),
-			direction.dot(getRightTopOffset()),
-			direction.dot(getLeftBottomOffset()),
-			direction.dot(getRightBottomOffset())
-		};
-		nMinMaxOf<double>(min, max, 4, values);
-		switch (max) {
-			case 0:
-				outPointForward = getLeftTopOffset();
-				break;
-			case 1:
-				outPointForward = getRightTopOffset();
-				break;
-			case 2:
-				outPointForward = getLeftBottomOffset();
-				break;
-			case 3:
-				outPointForward = getRightBottomOffset();
-				break;
-			default:
-				unreachable();
-		}
-		switch (min) {
-			case 0:
-				outPointBackward = getLeftTopOffset();
-				break;
-			case 1:
-				outPointBackward = getRightTopOffset();
-				break;
-			case 2:
-				outPointBackward = getLeftBottomOffset();
-				break;
-			case 3:
-				outPointBackward = getRightBottomOffset();
-				break;
-			default:
-				unreachable();
-		}
-	}
-
+	void getFarthestOffset(Vector2D& outPointPositive, Vector2D& outPointNegative, const Vector2D& direction) const noexcept;
+	void getForefrontOffset(Vector2D& outPointForward, Vector2D& outPointBackward, const Vector2D& direction) const noexcept;
 	/**
 	 * 获取在position处该碰撞箱直接覆盖到的方块。BlockLocation对应的范围是[return.left, return.right); [return.top, return.bottom)
 	 */
-	[[nodiscard]] RECT getCoveringBlocks(const Vector2D& position) const noexcept {
-		if constexpr (false) {
-			RECT ret;
-			const double
-				left = position.getX() - getLeft(),
-				top = position.getY() - getTop(),
-				right = position.getX() + getRight(),
-				bottom = position.getY() + getBottom();
-			double temp;
-			if (dEquals(left, temp = std::ceil(left))) ret.left = static_cast<long>(temp);
-			else ret.left = static_cast<long>(std::floor(left));
-			if (dEquals(right, temp = std::floor(right))) ret.right = static_cast<long>(temp);
-			else ret.right = static_cast<long>(std::ceil(right));
-			if (dEquals(top, temp = std::ceil(top))) ret.top = static_cast<long>(temp);
-			else ret.top = static_cast<long>(std::floor(top));
-			if (dEquals(bottom, temp = std::floor(bottom))) ret.bottom = static_cast<long>(temp);
-			else ret.bottom = static_cast<long>(std::ceil(bottom));
-			return ret;
-		}
-		return {
-			.left = static_cast<long>(std::floor(position.getX() - getLeft())),
-			.top = static_cast<long>(std::floor(position.getY() - getTop())),
-			.right = static_cast<long>(std::ceil(position.getX() + getRight())),
-			.bottom = static_cast<long>(std::ceil(position.getY() + getBottom()))
-		};
-	}
-
+	[[nodiscard]] RECT getCoveringBlocks(const Vector2D& position) const noexcept;
 	[[nodiscard]] String toString(const Vector2D& position) const { return L"left = " + dtoString(position.getX() - left) + L", right = " + dtoString(position.getX() + right) + L", top = " + dtoString(position.getY() - top) + L", bottom = " + dtoString(position.getY() + bottom); }
 };
 
@@ -185,6 +75,8 @@ public:
 		 * 这一段时间的tick长度
 		 */
 		double tickLasts;
+
+		[[nodiscard]] Vector2D velocity() const noexcept { return tickLasts == 0 ? Vector2D() : movement / tickLasts; }
 	};
 
 private:
@@ -198,22 +90,9 @@ public:
 	Velocity() noexcept = default;
 	~Velocity() noexcept = default;
 
-	[[nodiscard]] Vector2D getRelativeLocation(double tickDelta) const noexcept {
-		Vector2D ret;
-		for (const auto& [movement, tickLasts] : periods)
-			if (tickDelta > tickLasts) {
-				tickDelta -= tickLasts;
-				ret += movement;
-			}
-			else if (tickLasts != 0) ret += movement * nRange(tickDelta / tickLasts, 0.0, 1.0);
-		return ret; // 此处估计是tickDelta大于1了，反正无所谓，已经全部加起来了
-	}
-
-	[[nodiscard]] String toString() const noexcept {
-		std::wostringstream stream;
-		for (const auto& [movement, tickLasts] : periods) stream << L"\n    movement: " << movement.toString() << L"\n    tickLasts: " << tickLasts << L"\n  --------";
-		return stream.str();
-	}
+	[[nodiscard]] Vector2D getRelativeLocation(double tickDelta) const noexcept;
+	[[nodiscard]] Vector2D getLastVelocity() const noexcept { return periods.back().velocity(); }
+	[[nodiscard]] String toString() const noexcept;
 };
 
 class EntityMomentum final : public AtomicStorage {
@@ -281,6 +160,10 @@ public:
 	virtual void checkOnGround() noexcept;
 	virtual void onDamage(Damage& damage);
 	virtual void onDeath();
+	virtual void setHealth(double health) noexcept;
+	virtual void setMaxHealth(double health) noexcept;
+	virtual void setBloodPressure(double pressure) noexcept;
+	virtual void setMaxBloodPressure(double pressure) noexcept;
 	void tick() noexcept(false) override;
 	void render(double tickDelta, QWORD tickRendering) const noexcept override;
 	void setVelocity(const Vector2D& velocity) noexcept { this->velocity = velocity; }
@@ -297,6 +180,10 @@ public:
 	[[nodiscard]] EntityMomentum& getMomentum() noexcept { return this->momentum; }
 	[[nodiscard]] World* getWorld() const noexcept { return world; }
 	[[nodiscard]] bool isOnGround() const noexcept { return onGround; }
+	[[nodiscard]] double getHealth() const noexcept { return health; }
+	[[nodiscard]] double getMaxHealth() const noexcept { return maxHealth; }
+	[[nodiscard]] double getBloodPressure() const noexcept { return bloodPressure; }
+	[[nodiscard]] double getMaxBloodPressure() const noexcept { return maxBloodPressure; }
 
 	/**
 	 * @brief 根据tickDelta和tickRendering获取Location。因为一些原因，请在外部记得

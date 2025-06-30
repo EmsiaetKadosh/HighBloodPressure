@@ -6,7 +6,10 @@
 #include "TextEditor.h"
 
 
-void TextEditor::focus(const bool value) { interactManager.setInputMethodEditor(focusing = value); }
+void TextEditor::focus(const bool value) {
+	interactManager.setInputMethodEditor(focusing = value);
+	Logger.of(L"ime:", value).trace();
+}
 void TextEditor::insert(String&& str, TextEditorCursor at) {}
 void TextEditor::insert(wchar ch, TextEditorCursor at) {}
 void TextEditor::removeOne(TextEditorCursor at) {}

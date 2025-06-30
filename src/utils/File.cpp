@@ -52,6 +52,8 @@ File& File::truncate(const bool value) & noexcept {
 	return *this;
 }
 
+/*
+
 DataInteger::DataInteger(String&& name, const String& value) : Data(std::move(name), DataType::Integer) {
 	const String& str = value;
 	errno = 0;
@@ -127,6 +129,148 @@ int DataLoader::loadUntil(int& line, wchar at) {
 	return 0;
 }
 
+String DataLoader::parseString(std::wistream& in) {
+	String result;
+	wchar ch;
+	if (!(in >> std::ws >> ch)) {
+		Logger.error(L"Unexpected end of input");
+		return result;
+	}
+	if (ch == L'R' || ch == L'r') {
+		wchar next;
+		if (!(in >> next)) {
+			Logger.error(L"Unexpected end of input after R/r");
+			in.putback(ch);
+			return result;
+		}
+		if (next == L'"') return parseRawString(in, L"");
+		in.putback(next);
+		in.putback(ch);
+	}
+	if (ch == L'"') return parseRegularString(in);
+	Logger.error(L"Expected string literal");
+	in.putback(ch);
+	return result;
+}
+
+String DataLoader::parseRegularString(std::wistream& in) {
+	String result;
+	wchar ch;
+	bool escape = false;
+	while (in.get(ch))
+		if (escape) {
+			escape = false;
+			switch (ch) {
+				case L'n':
+					result += L'\n';
+					break;
+				case L't':
+					result += L'\t';
+					break;
+				case L'v':
+					result += L'\v';
+					break;
+				case L'b':
+					result += L'\b';
+					break;
+				case L'r':
+					result += L'\r';
+					break;
+				case L'f':
+					result += L'\f';
+					break;
+				case L'a':
+					result += L'\a';
+					break;
+				case L'\\':
+					result += L'\\';
+					break;
+				case L'\'':
+					result += L'\'';
+					break;
+				case L'"':
+					result += L'"';
+					break;
+				case L'?':
+					result += L'\?';
+					break;
+				case L'x': { // hexadecimal escape
+					String hex;
+					while (in.get(ch) && isxdigit(ch)) { hex += ch; }
+					if (!hex.empty()) {
+						in.putback(ch);
+						try {
+							int value = std::stoi(hex, nullptr, 16);
+							result += static_cast<wchar_t>(value);
+						} catch (...) { Logger.error(L"Invalid hexadecimal escape sequence"); }
+					} else Logger.error(L"\\x used with no following hex digits");
+					break;
+				}
+				case L'0':
+				case L'1':
+				case L'2':
+				case L'3':
+				case L'4':
+				case L'5':
+				case L'6':
+				case L'7': { // octal escape
+					String octal;
+					octal += ch;
+					// Read up to 2 more octal digits
+					for (int i = 0; i < 2 && in.get(ch) && ch >= '0' && ch <= '7'; ++i) { octal += ch; }
+					in.putback(ch);
+					try {
+						int value = std::stoi(octal, nullptr, 8);
+						result += static_cast<wchar_t>(value);
+					} catch (...) { Logger.error(L"Invalid octal escape sequence"); }
+					break;
+				}
+				default:
+					Logger.error(String(L"Unknown escape sequence: \\") + ch);
+					result += ch;
+					break;
+			}
+		} else if (ch == L'\\') escape = true;
+		else if (ch == L'"') return result; // End of string
+		else result += ch;
+	Logger.error(L"Unterminated string literal");
+	return result;
+}
+
+String DataLoader::parseRawString(std::wistream& in, const String& delimiter) {
+	String result;
+	wchar_t ch;
+	String currentDelim;
+	if (delimiter.empty()) {
+		while (in.get(ch) && ch != L'(') currentDelim += ch;
+		if (ch != L'(') {
+			Logger.error(L"Missing '(' in raw string literal");
+			return result;
+		}
+	} else currentDelim = delimiter;
+	const String endSequence = L")" + currentDelim + L"\"";
+	size_t matchPos = 0;
+	while (in.get(ch)) {
+		if (ch == endSequence[matchPos]) {
+			matchPos++;
+			if (matchPos == endSequence.size()) {
+				result.erase(result.size() - endSequence.size() + 1);
+				return result;
+			}
+		} else {
+			if (matchPos > 0) {
+				result.append(endSequence.substr(0, matchPos));
+				matchPos = 0;
+			}
+		}
+		result += ch;
+	}
+	Logger.error(L"Unterminated raw string literal");
+	return result;
+}
+
+*/
+
 File FileAccessor::getAccess(const String& path) {
 	namespace fs = std::filesystem;
 	using Path = fs::path;
@@ -138,110 +282,3 @@ File FileAccessor::getAccess(const String& path) {
 	}
 	return File(p);
 }
-
-String StringParser::parse(const String& input) {
-	if (input.empty()) return L"";
-	// 检查是否是原始字符串
-	if (input.size() >= 2 && input[0] == L'R' || input[0] == L'r' && input[1] == L'"') return parseRawString(input);
-	return parseRegularString(input);
-}
-
-String StringParser::parseRawString(const String& input) noexcept {
-	const size_t delimiterEnd = input.find(L'(', 2);
-	if (delimiterEnd == String::npos) return Logger.error(L"Malformed raw string literal - missing '('"), L"";
-	const String delimiter = input.substr(2, delimiterEnd - 2);
-	const String closingDelimiter = L")" + delimiter + L"\"";
-	const size_t contentStart = delimiterEnd + 1;
-	const size_t contentEnd = input.rfind(closingDelimiter);
-	if (contentEnd == String::npos) return Logger.error(L"Malformed raw string literal - missing closing delimiter"), L"";
-	return input.substr(contentStart, contentEnd - contentStart);
-}
-
-String StringParser::parseRegularString(const String& input) noexcept {
-	if (input.size() < 2 || input.front() != L'"' || input.back() != L'"') throw std::invalid_argument("Invalid string literal - must be enclosed in double quotes");
-	String result;
-	result.reserve(input.size() - 2); // Reserve space for performance
-
-	for (size_t i = 1; i < input.size() - 1; ++i)
-		if (input[i] != L'\\') result += input[i];
-		else {
-			if (i + 1 >= input.size() - 1) return Logger.error(L"Incomplete escape sequence at end of string"), result;
-			const wchar escaped = input[++i];
-			if (auto it = escapeSequences.find(escaped); it != escapeSequences.end()) result += it->second;
-			else if (escaped == L'x') result += parseHexEscape(input, i);
-			else if (escaped == L'u') result += parseUnicodeEscape(input, i, 4);
-			else if (escaped == L'U') result += parseUnicodeEscape(input, i, 8);
-			else if (std::isdigit(escaped)) result += parseOctalEscape(input, i);
-			else result += escaped;
-		}
-
-	return result;
-}
-
-wchar StringParser::parseHexEscape(const String& input, size_t& pos) noexcept {
-	if (pos + 2 >= input.size() - 1) return Logger.error(Logger.of(L"Incomplete hex escape sequence:", input.substr(pos, 2))), L'?';
-	const String hexStr = input.substr(pos + 1, 2);
-	pos += 2;
-	try { return static_cast<wchar>(std::stoi(hexStr, nullptr, 16)); } catch (...) {
-		Logger.error(Logger.of(L"Invalid hex escape sequence:", hexStr));
-		return L'?';
-	}
-}
-
-String StringParser::parseUnicodeEscape(const String& input, size_t& pos, const int length) noexcept {
-	if (pos + length >= input.size() - 1) return Logger.error(Logger.of(L"Incomplete Unicode escape sequence:", input.substr(pos + 1))), L"?";
-	const String hexStr = input.substr(pos + 1, length);
-	pos += length;
-	try {
-		const unsigned long code = std::stoul(hexStr, nullptr, 16);
-		return codePointToUTF8(code);
-	} catch (...) { return Logger.error(Logger.of(L"Invalid Unicode escape sequence:", hexStr)), L"?"; }
-}
-
-wchar StringParser::parseOctalEscape(const String& input, size_t& pos) noexcept {
-	size_t end = pos;
-	while (end < input.size() - 1 && end - pos < 3 && input[end + 1] >= L'0' && input[end + 1] <= L'7') ++end;
-
-	const String octStr = input.substr(pos, end - pos + 1);
-	pos = end;
-
-	try { return static_cast<wchar>(std::stoi(octStr, nullptr, 8)); } catch (...) {
-		Logger.error(Logger.of(L"Invalid octal escape sequence:", octStr));
-		return L'?';
-	}
-}
-
-String StringParser::codePointToUTF8(const unsigned long codePoint) noexcept {
-	String result;
-
-	if (codePoint <= 0x7F) result += static_cast<wchar>(codePoint);
-	else if (codePoint <= 0x7FF) {
-		result += static_cast<wchar>(0xC0 | codePoint >> 6 & 0x1F);
-		result += static_cast<wchar>(0x80 | codePoint & 0x3F);
-	} else if (codePoint <= 0xFFFF) {
-		result += static_cast<wchar>(0xE0 | codePoint >> 12 & 0x0F);
-		result += static_cast<wchar>(0x80 | codePoint >> 6 & 0x3F);
-		result += static_cast<wchar>(0x80 | codePoint & 0x3F);
-	} else if (codePoint <= 0x10FFFF) {
-		result += static_cast<wchar>(0xF0 | codePoint >> 18 & 0x07);
-		result += static_cast<wchar>(0x80 | codePoint >> 12 & 0x3F);
-		result += static_cast<wchar>(0x80 | codePoint >> 6 & 0x3F);
-		result += static_cast<wchar>(0x80 | codePoint & 0x3F);
-	} else Logger.error(Logger.of(L"Invalid Unicode code point:", codePoint));
-
-	return result;
-}
-
-inline const std::unordered_map<wchar, wchar> StringParser::escapeSequences = {
-	{ L'\'', L'\'' },
-	{ L'\"', L'\"' },
-	{ L'?', L'\?' },
-	{ L'\\', L'\\' },
-	{ L'a', L'\a' },
-	{ L'b', L'\b' },
-	{ L'f', L'\f' },
-	{ L'n', L'\n' },
-	{ L'r', L'\r' },
-	{ L't', L'\t' },
-	{ L'v', L'\v' }
-};

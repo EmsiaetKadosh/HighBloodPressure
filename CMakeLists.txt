@@ -8,56 +8,71 @@ set(CMAKE_CXX_STANDARD 26)
 set(CMAKE_WIN32_EXECUTABLE true)
 set(CMAKE_BUILD_TYPE Debug)
 
-if (CMAKE_CXX_COMPILER_ID STREQUAL "Clang")
-    add_compile_options(${PROJECT_NAME} -Wno-microsoft-string-literal-from-predefined)
-endif ()
-if (CMAKE_CXX_COMPILER_ID STREQUAL "MSVC")
-    add_compile_options(/source-charset:utf-8)
-    add_compile_options(/execution-charset:utf-8)
-endif ()
+add_compile_options(/source-charset:utf-8)
+add_compile_options(/execution-charset:utf-8)
 add_compile_options(/Zc:preprocessor)
-#add_compile_options(-Wall)
 
 include(CTest)
 enable_testing()
 
+if (true)
+	set(HBP_RENDER_SYSTEM gdi)
+	set(HBP_RENDER_SYSTEM_FILES
+		src/render/gdi/font.cpp
+		src/render/gdi/texture.cpp
+		src/render/gdi/renderer.cpp
+	)
+else ()
+	set(HBP_RENDER_SYSTEM dx)
+	set(HBP_RENDER_SYSTEM_FILES
+		src/render/dx/font.cpp
+		src/render/dx/direct.cpp
+	)
+	add_definitions(-D__CARLBEKS_USE_DX__)
+endif ()
+
+set(HBP_STANDARD_FILES
+	src/main.cpp
+	src/global.cpp
+
+	src/def.cpp
+	# math
+	src/utils/File.cpp
+	src/utils/exception.cpp
+	# Chars
+
+	src/utils/gc.cpp
+	# utils
+	src/utils/Task.cpp
+	# hbp
+	src/game/Animation.cpp
+
+	src/interact/InteractManager.cpp
+	src/utils/IText.cpp
+	src/game/Description.cpp
+	src/game/world/Location.cpp
+	src/render/Pose.cpp
+	src/render/TextureManager.cpp
+	src/render/Renderer.cpp
+	src/ui/Hud.cpp
+	src/ui/TextEditor.cpp
+	src/ui/Window.cpp
+
+	src/game/Game.cpp
+
+	# xWindows
+	# gameDef
+	src/game/entity/Entity.cpp
+	src/game/world/Block.cpp
+	src/game/world/World.cpp
+	src/game/entity/Player.cpp
+
+	# xBlocks
+)
+
 add_executable(${PROJECT_NAME}
-        src/main.cpp
-
-        src/def.cpp
-        # math
-        src/utils/File.cpp
-        src/utils/exception.cpp
-        # Chars
-
-        src/utils/gc.cpp
-        # utils
-        src/utils/Task.cpp
-        # hbp
-        src/game/Animation.cpp
-
-        src/interact/InteractManager.cpp
-        src/utils/IText.cpp
-        src/game/world/Location.cpp
-        src/render/TextureManager.cpp
-        src/render/Renderer.cpp
-        src/ui/Hud.cpp
-        src/ui/TextEditor.cpp
-        src/ui/Window.cpp
-
-        src/game/Game.cpp
-
-        # xWindows
-        # gameDef
-        src/game/entity/Entity.cpp
-        src/game/world/Block.cpp
-        src/game/world/World.cpp
-        src/game/entity/Player.cpp
-
-        # xBlocks
-
-        # src/render/dx/font.cpp
-        # src/render/dx/direct.cpp
+	${HBP_STANDARD_FILES}
+	${HBP_RENDER_SYSTEM_FILES}
 )
 set(CPACK_PROJECT_NAME ${PROJECT_NAME})
 set(CPACK_PROJECT_VERSION ${PROJECT_VERSION})

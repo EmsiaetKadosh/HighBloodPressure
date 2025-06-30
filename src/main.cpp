@@ -2,6 +2,11 @@
 #include "includes.h"
 #include "utils\TestCode.h"
 
+#ifdef __CARLBEKS_USE_DX__
+#else
+#include "render\gdi\renderer.hpp"
+#endif
+
 long __stdcall UnhandledExceptionHandler(PEXCEPTION_POINTERS exception) {
 	isRunning = false;
 	Logger.fatal(L"Unhandled exception handler called");
@@ -408,7 +413,7 @@ LRESULT __stdcall WindowCallback(const HWND hwnd, const UINT uMsg, const WPARAM 
 			break;
 			[[likely]]
 		case WM_NCMOUSEMOVE: {
-			POINT pt{ .x = GET_X_LPARAM(lParam), .y = GET_Y_LPARAM(lParam) };
+			POINT pt { .x = GET_X_LPARAM(lParam), .y = GET_Y_LPARAM(lParam) };
 			ScreenToClient(MainWindowHandle, &pt);
 			interactManager.updateMouse(pt.x, pt.y);
 			UNREFERENCED_PARAMETER(game.passEvent(MouseActionCode::MAC_MOVE, 0, interactManager.getMouseX(), interactManager.getMouseY()));
@@ -498,7 +503,7 @@ LRESULT __stdcall WindowCallback(const HWND hwnd, const UINT uMsg, const WPARAM 
 				UNREFERENCED_PARAMETER(game.passEvent(MouseActionCode::MAC_LEAVE, 0, interactManager.getMouseX(), interactManager.getMouseY()));
 			break;
 		case WM_DWMCOMPOSITIONCHANGED: {
-			constexpr MARGINS margins{
+			constexpr MARGINS margins {
 				.cxLeftWidth = 0,
 				.cxRightWidth = 0,
 				.cyTopHeight = 0,
@@ -553,12 +558,12 @@ LRESULT __stdcall HookCallback(const int code, const WPARAM wParam, const LPARAM
 		case WM_LBUTTONUP:
 		case WM_NCLBUTTONUP:
 			PostMessageW(MainWindowHandle, WM_APP_LBUTTONUP, p->wParam, p->lParam);
-			// Logger.trace(wParam ? L"[Hook] LButtonUp    (Removed)" : L"[Hook] LButtonUp");
+		// Logger.trace(wParam ? L"[Hook] LButtonUp    (Removed)" : L"[Hook] LButtonUp");
 			return 0;
 		case WM_MBUTTONDOWN:
 		case WM_NCMBUTTONDOWN:
 			PostMessageW(MainWindowHandle, WM_APP_MBUTTONDOWN, p->wParam, p->lParam);
-			// Logger.trace(wParam ? L"[Hook] MButtonDown  (Removed)" : L"[Hook] MButtonDown");
+		// Logger.trace(wParam ? L"[Hook] MButtonDown  (Removed)" : L"[Hook] MButtonDown");
 			return 0;
 		default:
 			break;
@@ -593,12 +598,13 @@ inline void GameInitialize() {
 	interactSettings.setScreenScale(GetSystemMetrics(SM_CYSCREEN) / 2160.0);
 	translator.initialize(); // 定序：对所有文字的显示优先初始化
 	interactManager.initialize(); // 定序：快捷键优先初始化。后续的其他模块可能依赖初始化时快捷键获取
+	textureManager.initialize(); // 定序：初始化空纹理，防止game.initialize中获取
 	game.initialize(); // 定序：game中的worldManager获取快捷键依赖interactManager先行初始化
 	World* w = StartWorld::create();
-	game.worldManager->addWorld(w);
-	game.worldManager->setWorld(w);
+	game.getWorldManager().addWorld(w);
+	game.getWorldManager().setWorld(w);
 	Player* p = Player::create(Vector2D(0.5, 0.5));
-	game.entityManager->addEntity(p);
+	game.getEntityManager().addEntity(p);
 	w->addEntity(p, WorldTransportReason::InitialGeneration);
 	renderer.getCamera().setTargetEntity(p);
 	GameThread = Thread(gameThread);
@@ -634,13 +640,13 @@ inline void GameInitialize() {
 	ShowWindow(MainWindowHandle, nShowCmd);
 	// Hook
 	hook = SetWindowsHookExW(WH_GETMESSAGE, HookCallback, nullptr, GetCurrentThreadId());
-	if (!hook) Logger.error(Logger.of(L"SetWindowsHookW failed. LastError:", GetLastError()));
+	if (!hook) Logger.of(L"SetWindowsHookW failed. LastError:", GetLastError()).error();
 	// RawInput
 	device.usUsagePage = 0x01;
 	device.usUsage = 0x06;
 	device.dwFlags = RIDEV_INPUTSINK; // 如果指定RIDEV_NOLEGACY则会禁用传统键盘消息
 	device.hwndTarget = MainWindowHandle;
-	if (!RegisterRawInputDevices(&device, 1, sizeof(RAWINPUTDEVICE))) Logger.error(Logger.of(L"RegisterRawInputDevice failed. LastError:", GetLastError()));
+	if (!RegisterRawInputDevices(&device, 1, sizeof(RAWINPUTDEVICE))) Logger.of(L"RegisterRawInputDevice failed. LastError:", GetLastError()).error();
 	else interactManager.enableRawInput();
 	return false;
 }
@@ -649,7 +655,7 @@ inline void SystemFinalize(const WNDCLASSEX& wc, const HHOOK& hook, RAWINPUTDEVI
 	if (!UnhookWindowsHookEx(hook)) Logger.error(L"Failed to UnhookWindowsHookEx. LastError:" + std::to_wstring(GetLastError()));
 	if (!UnregisterClassW(wc.lpszClassName, wc.hInstance)) Logger.error(L"Failed to UnregisterClassW. LastError:" + std::to_wstring(GetLastError()));
 	device.dwFlags = RIDEV_REMOVE;
-	if (!RegisterRawInputDevices(&device, 1, sizeof(RAWINPUTDEVICE))) Logger.error(Logger.of(L"Failed to UnregisterRawInputDevice. LastError:", GetLastError()));
+	if (!RegisterRawInputDevices(&device, 1, sizeof(RAWINPUTDEVICE))) Logger.of(L"Failed to UnregisterRawInputDevice. LastError:", GetLastError()).error();
 }
 
 int __stdcall wWinMain(const HINSTANCE hInstance, const HINSTANCE, [[maybe_unused]] const LPWSTR lpCmdLine, [[maybe_unused]] const int nShowCmd) {

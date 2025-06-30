@@ -4,9 +4,6 @@
 
 #pragma once
 
-#define __CARLBEKS_DEBUG__
-#define __CARLBEKS_MEMORY__ 2
-
 #pragma warning(disable: 4819)
 
 #include <typeinfo>
@@ -111,110 +108,12 @@ template <typename T>
 concept PointerType = std::is_pointer_v<T>;
 template <typename T>
 concept TypeName = NonreferenceType<T> && NonpointerType<T>;
-
-namespace $LimitedAccess {
-	struct Release {
-		Release() = default;
-
-		~Release();
-	} extern gcRelease_LoggerRelease_memoryManagerRelease;
-
-	struct MemoryManager {
-		struct MemoryInfo {
-			const String msg;
-			std::size_t size;
-		};
-
-		Map<void*, MemoryInfo> allocated{};
-		std::atomic_bool acquiring = false;
-
-		constexpr MemoryManager() noexcept = default;
-	} inline& [[carlbeks::releasedat("def.cpp")]] memoryManager = *new MemoryManager;
-}
+template <typename T>
+concept Nonabstract = !std::is_abstract_v<T>;
 
 void requireNonnull(const void* value) noexcept(false);
 void checkAllocation(const void* value) noexcept(false);
-inline String ptrtow(QWORD value);
-
-#if defined __CARLBEKS_DEBUG__ || defined __CARLBEKS_MEMORY__
 [[noreturn]] void unreachable() noexcept(false);
-extern String atow(const char* chars);
-
-namespace $LimitedAccess {
-#if __CARLBEKS_MEMORY__ > 2
-	void printAllocate(void* value, std::size_t size, const String&);
-#endif
-#if __CARLBEKS_MEMORY__ > 3
-	void printDeallocate(void* value, std::size_t size, const String&);
-#endif
-	void printDeallocateWarning(void* value, const String& msg);
-
-	template <typename T>
-	T* allocatedFor$(T* value, const String& msg = L"", std::size_t size = sizeof(T)) {
-		requireNonnull(value);
-		bool expect = false;
-		while (!memoryManager.acquiring.compare_exchange_strong(expect, true)) expect = false;
-		const auto& k = memoryManager.allocated.emplace(value, MemoryManager::MemoryInfo{L"[" + atow(typeid(T).name()) + L"] " + msg, size}).first;
-#if __CARLBEKS_MEMORY__ > 2
-		printAllocate(value, k->second.size, k->second.msg);
-#endif
-		memoryManager.acquiring.store(false);
-		return value;
-	}
-
-	template <typename T>
-	T* deallocating$(
-		T* value
-#if __CARLBEKS_MEMORY__ > 1
-		, const String& stack
-#endif
-	) {
-		bool expect = false;
-		while (!memoryManager.acquiring.compare_exchange_strong(expect, true)) expect = false;
-#if __CARLBEKS_MEMORY__ > 2
-		const MemoryManager::MemoryInfo* info = nullptr;
-		if (memoryManager.allocated.contains(value)) info = &memoryManager.allocated.at(value);
-		printDeallocate(value, info ? info->size : 0, info ? info->msg : L"???");
-#endif
-		if (value)
-			if (!memoryManager.allocated.erase(value))
-				printDeallocateWarning(
-					value,
-#if __CARLBEKS_MEMORY__ > 1
-					stack.empty() ? L"value not recorded" : L"value not recorded\n    " + stack
-#else
-					L"value not recorded"
-#endif
-				);
-		memoryManager.acquiring.store(false);
-		return value;
-	}
-}
-
-#ifndef __FUNCSIG__
-#define __FUNCSIG__ atow(__func__)
-#define __FUNCSIG__PACK__ + __FUNCSIG__ +
-#else
-#define __FUNCSIG__PACK__ __FUNCSIG__
-#endif
-
-#if __CARLBEKS_MEMORY__ > 3
-#define allocatedFor(val, ...) $LimitedAccess::allocatedFor$(val, L"From " __FUNCSIG__PACK__ L"\n    At   " __FILE__ ":" _STL_STRINGIZE(__LINE__) __VA_OPT__(,) __VA_ARGS__)
-#else
-#define allocatedFor(val, ...) $LimitedAccess::allocatedFor$(val, L"" __VA_OPT__(,) __VA_ARGS__)
-#endif
-#if __CARLBEKS_MEMORY__ > 1
-#define deallocating(val) $LimitedAccess::deallocating$(val, L"From " __FUNCSIG__PACK__ L"\n    At   " __FILE__ ":" _STL_STRINGIZE(__LINE__))
-#define deallocating_message(val, msg) $LimitedAccess::deallocating$(val, msg)
-#else
-#define deallocating(val) $LimitedAccess::deallocating$(val)
-#define deallocating_message(val, msg) deallocating(val)
-#endif
-
-#else
-#define allocatedFor(val, ...) val
-#define deallocating(val) val
-#endif
 
 namespace $LimitedAccess {
 	template <typename T>
@@ -227,11 +126,22 @@ namespace $LimitedAccess {
 	};
 }
 
+#include "global.hpp"
+
 template <TypeName Base>
 class Container {
+	template <TypeName T>
+	friend class ::Container;
+
 	Base* value;
 	bool hasValue;
 	char padding[7]{};
+
+	template <typename... Args>
+	Base* create(Args&&... args) {
+		if constexpr (std::is_abstract_v<Base>) return nullptr;
+		else return new Base(std::forward<Args>(args)...);
+	}
 
 public:
 	/**
@@ -251,8 +161,11 @@ public:
 	template <TypeName T> requires std::is_base_of_v<Base, T> || std::is_same_v<Base, T>
 	Container(Container<T>&& other) noexcept : value(other.value), hasValue(other.hasValue) { other.value = nullptr, other.hasValue = false; }
 
-	template <typename ...Args>
-	Container(Args&&... args) : value(allocatedFor(new Base(std::forward<Args>(args)...))), hasValue(true) {}
+	template <typename T, typename... Args> requires std::is_base_of_v<Base, T> || std::is_same_v<Base, T>
+	Container(T** out_ptr, Args&&... args) : value(allocatedFor(*out_ptr = new T(std::forward<Args>(args)...))), hasValue(true) {}
+
+	template <typename... Args> requires Nonabstract<Base> && (sizeof...(Args) > 1 || !((std::is_same_v<std::decay_t<Base>, Args>) || ...)) // 约束非抽象Base + 非移动/复制构造，才能使用这个函数
+	Container(Args&&... args) : value(allocatedFor(create(std::forward<Args>(args)...))), hasValue(true) {}
 
 	~Container() {
 		if (hasValue) delete deallocating(value);

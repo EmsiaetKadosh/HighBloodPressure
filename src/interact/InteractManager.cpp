@@ -364,6 +364,7 @@ InteractManager::InteractManager() {
 	keyStatus[0xFC].name = L"None";
 	keyStatus[0xFD].name = L"PA1";
 	keyStatus[0xFE].name = L"OEM-Clear";
+	initializerChecker.registerModule(L"InteractManager");
 }
 
 void InteractManager::updateMouse(const int x, const int y) noexcept {
@@ -385,7 +386,7 @@ void InteractManager::setInputMethodEditor(const bool focusing) noexcept {
 		if (imc) ImmSetConversionStatus(imc, conversionMode, sentenceMode);
 		ImmAssociateContext(MainWindowHandle, imc);
 		ImmSetOpenStatus(imc, true);
-	} else if (!imc) {
+	} else {
 		Logger.debug(L"disable ime");
 		imc = ImmGetContext(MainWindowHandle);
 		if (imc) ImmGetConversionStatus(imc, &conversionMode, &sentenceMode);
@@ -409,7 +410,7 @@ int InteractManager::dealMouseWheel() noexcept {
 void InteractSettings::resizeSetSystemScale(const double scale) {
 	constants.systemScale = scale;
 	actual.uiScale = scale * options.uiScale;
-	actual.mapScale = scale * options.mapScale;
+	actual.mapScale = static_cast<unsigned int>(scale * options.mapScale);
 	actual.fontHeight = static_cast<int>(scale * options.fontHeight);
 }
 
@@ -419,13 +420,24 @@ void InteractSettings::setUiScale(const double scale) {
 	renderer.requireResize();
 }
 
-void InteractSettings::setMapScale(const double scale) {
-	options.mapScale = scale;
-	actual.mapScale = constants.systemScale * options.mapScale;
+void InteractSettings::setMapScale(const unsigned int scale) {
+	options.mapScale = static_cast<unsigned int>(scale);
+	actual.mapScale = static_cast<unsigned int>(constants.systemScale * options.mapScale);
 }
 
 void InteractSettings::setScreenScale(const double scale) {
 	actual.captionHeight = static_cast<int>(options.captionHeight * scale);
 	actual.marginWidth = static_cast<int>(options.marginWidth * scale);
+}
+
+void InteractSettings::modifyUiScale(const double scale) {
+	options.uiScale *= scale;
+	actual.uiScale = constants.systemScale * options.uiScale;
+	renderer.requireResize();
+}
+
+void InteractSettings::modifyMapScale(const int scale) {
+	options.mapScale += scale;
+	actual.mapScale = static_cast<unsigned int>(constants.systemScale * options.mapScale);
 }
 

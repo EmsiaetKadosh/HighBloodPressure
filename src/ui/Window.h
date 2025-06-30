@@ -216,7 +216,7 @@ class TextBar : public Widget {
 
 public:
 	Animation animation = Animation().features(Animation::AS_CUBIC).setDuration(20);
-	TextBar(const double x, const double y, const double w, const double h, const UILocation location) : Widget(x, y, w, h, location) { backgroundColor.hover = 0xff222222; }
+	TextBar(const double x, const double y, const double w, const double h, const UILocation location) : Widget(x, y, w, h, location) { backgroundColor.hover = 0xff444444; }
 	[[nodiscard]] const TextEditor& getTextEditor() const noexcept { return editor; }
 	[[nodiscard]] TextEditor& getTextEditor() noexcept { return editor; }
 	void render(double tickDelta, QWORD tickRendering) const noexcept override;
@@ -236,20 +236,10 @@ private:
 
 public:
 	~ConfirmWindow() override = default; // 不需要delete，析构时Window会自动delete
-
-	void render(const double tickDelta, QWORD tickRendering) const noexcept override {
-		int w, h;
-		w = renderer.getWidth(), h = renderer.getHeight();
-		w >>= 2, h >>= 2;
-		renderer.fill(w, h, w + w, h + h, 0xcc222222);
-		renderer.getFontManager().getDefault().drawCenter(text->getRenderableString(), w, h, w + w, h + (h >> 1), 0xffeeeeee);
-		for (const Container<Widget>& widget : widgets) widget->render(tickDelta, tickRendering);
-	}
-
+	void render(double tickDelta, QWORD tickRendering) const noexcept override;
 	ConfirmWindow& requireConfirm(const Function<void(Button&)>& func = {});
 	ConfirmWindow& requireCancel(const Function<void(Button&)>& func = {});
 	ConfirmWindow&& move() noexcept { return std::move(*this); }
-
 	static ConfirmWindow* of(const Container<IText>& text) { return allocatedFor(new ConfirmWindow(text)); }
 	static ConfirmWindow* of(Container<IText>&& text) { return allocatedFor(new ConfirmWindow(std::move(text))); }
 };

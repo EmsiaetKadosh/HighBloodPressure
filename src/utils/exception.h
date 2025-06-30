@@ -4,6 +4,8 @@
 
 #pragma once
 
+#include "..\global.hpp"
+
 #include "..\warnings.h"
 #include "..\def.h"
 #include "File.h"
@@ -71,6 +73,27 @@ class ZeroValueException final : public Exception {
 public:
 	ZeroValueException(String&& msg) : Exception(std::move(msg), &type) {}
 	ZeroValueException(const String& msg) : Exception(msg, &type) {}
+};
+
+class LoggableString {
+	friend class PublicLogger;
+	String str;
+	PublicLogger* logger;
+	bool notLogged = false;
+	LoggableString() = delete;
+	LoggableString(const LoggableString&) = delete;
+	LoggableString(String&& str, PublicLogger* logger) : str(std::move(str)), logger(logger) {};
+
+public:
+	~LoggableString() { if (notLogged) log(); }
+
+	PublicLogger& trace() noexcept;
+	PublicLogger& debug() noexcept;
+	PublicLogger& log() noexcept;
+	PublicLogger& info() noexcept;
+	PublicLogger& warn() noexcept;
+	PublicLogger& error() noexcept;
+	PublicLogger& fatal() noexcept;
 };
 
 class PublicLogger final {
@@ -224,20 +247,17 @@ public:
 		stream << std::forward<T>(t);
 		(stream << ... << std::forward<Ts>(ts));
 	}
-	String of(T&& t, Ts&&... ts) const {
+	LoggableString of(T&& t, Ts&&... ts) {
 		std::wstringstream stream = {};
 		stream << std::forward<T>(t);
 		ofs(stream, ts...);
-		return stream.str();
+		return LoggableString(stream.str(), this);
 	}
 
 	template <typename T> requires requires(std::wstringstream stream, T&& t) { std::wstringstream(t); }
-	String of(T&& ts) const {
+	LoggableString of(T&& ts) {
 		std::wstringstream stream = {};
-		ofs(stream, ts...);
-		return stream.str();
+		ofs(stream, ts);
+		return LoggableString(stream.str(), this);
 	}
 };
-
-[[carlbeks::releasedat("def.cpp")]] inline PublicLogger& Logger = *new PublicLogger(L"Main");
-

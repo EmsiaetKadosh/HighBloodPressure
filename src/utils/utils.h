@@ -4,6 +4,7 @@
 
 #pragma once
 
+#include "Chars.h"
 #include "gc.h"
 
 template <typename T, typename L = void>
@@ -323,7 +324,7 @@ public:
 		// else std::this_thread::yield();
 		const bool lw = longWaiting;
 		longWaiting = isLong;
-		if (doPrint && spinCount) Logger.trace(Logger.of(lw ? L"long" : L"short", L"atomicAcquired for", spinCount, L"times"));
+		if (doPrint && spinCount) Logger.of(lw ? L"long" : L"short", L"atomicAcquired for", spinCount, L"times").trace();
 	}
 
 	void atomicRelease(const bool isLong = false) const noexcept {

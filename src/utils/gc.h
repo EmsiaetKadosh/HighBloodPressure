@@ -4,6 +4,8 @@
 
 #pragma once
 
+#include "..\global.hpp"
+
 #include "..\warnings.h"
 #include "..\def.h"
 #include "exception.h"
@@ -54,7 +56,11 @@ class GarbageCollector {
 	IGarbage* processing = nullptr;
 
 public:
-	GarbageCollector() { Logger.info(L"initialize GarbageCollector"); }
+	GarbageCollector() {
+		initializerChecker.requiredModule(L"gc", L"MemoryManager");
+		Logger.info(L"initialize GarbageCollector");
+		initializerChecker.registerModule(L"gc");
+	}
 	GarbageCollector(const GarbageCollector&) = delete;
 	GarbageCollector(GarbageCollector&&) = delete;
 	GarbageCollector& operator=(const GarbageCollector&) = delete;
@@ -154,5 +160,3 @@ public:
 		}
 	}
 };
-
-inline GarbageCollector& [[carlbeks::releasedat("def.cpp")]] gc = *new GarbageCollector();
