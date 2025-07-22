@@ -28,6 +28,7 @@ class GdiTextureManager final : public ITextureManager {
 public:
 	void initialize() noexcept override;
 	GdiTextureManager();
+	~GdiTextureManager();
 	[[nodiscard]] TextureEntry getNullTexture() const noexcept override { return entryOf(&null); }
 	void load() noexcept(false) override;
 	void unload() noexcept(false) override;

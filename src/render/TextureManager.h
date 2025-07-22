@@ -57,7 +57,7 @@ protected:
 public:
 	virtual void initialize() noexcept = 0;
 	ITextureManager() { initializerChecker.requiredModule(L"TextureManager", L"gc").registerModule(L"TextureManager"); }
-	virtual ~ITextureManager(); // unload交给renderer
+	virtual ~ITextureManager() = default;
 
 	[[nodiscard]] TextureEntry getTexture(const String& id) noexcept;
 	[[nodiscard]] bool isNullTexture(const TextureEntry& entry) const noexcept { return isNullTexture(entry.texture); }

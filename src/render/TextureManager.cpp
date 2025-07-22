@@ -6,8 +6,6 @@
 #include "..\utils\exception.h"
 #include "TextureManager.h"
 
-ITextureManager::~ITextureManager() { Logger.debug(L"~ITextureManager()"); }
-
 TextureEntry ITextureManager::getTexture(const String& id) noexcept {
 	if (const auto iter = textures.find(id); iter != textures.cend()) return TextureEntry(iter->second.ptr());
 	Logger.error(L"Texture not loaded: " + id + L". Trying to load...");

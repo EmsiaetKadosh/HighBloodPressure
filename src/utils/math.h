@@ -10,40 +10,32 @@
 inline constexpr double EpsilonValue = 1e-10;
 inline constexpr double EpsilonCheck = 1e-8;
 
-template <typename T>
-const T& nMin(const T& a, const T& b) { return a < b ? a : b; }
+template <typename T> const T& nMin(const T& a, const T& b) { return a < b ? a : b; }
 
-template <typename T>
-const T& nMin(const T& val0, const T& val1, const T& vals...) { return nMin(nMin(val0, val1), nMin(vals...)); }
+template <typename T> const T& nMin(const T& val0, const T& val1, const T& vals...) { return nMin(nMin(val0, val1), nMin(vals...)); }
 
-template <typename T>
-const T& nMax(const T& a, const T& b) { return a > b ? a : b; }
+template <typename T> const T& nMax(const T& a, const T& b) { return a > b ? a : b; }
 
-template <typename T>
-const T& nMax(const T& val0, const T& val1, const T& vals...) { return nMax(nMax(val0, val1), nMax(vals...)); }
+template <typename T> const T& nMax(const T& val0, const T& val1, const T& vals...) { return nMax(nMax(val0, val1), nMax(vals...)); }
 
-template <typename T>
-const T& nRange(const T& val, const T& min, const T& max) { return nMax(nMin(val, max), min); }
+template <typename T> const T& nRange(const T& val, const T& min, const T& max) { return nMax(nMin(val, max), min); }
 
-template <typename T>
-T nRangeSmooth(const T& val, const T& min, const T& max) {
+template <typename T> T nRangeSmooth(const T& val, const T& min, const T& max) {
 	T dif = val - (min + max) * 0.5;
 	T tanh_like = 1.0 - 1.0 / (1.0 + std::abs(dif));
 	if (dif < 0) tanh_like = -tanh_like;
 	return (min + max + tanh_like * (max - min)) * 0.5;
 }
 
-template <typename T>
-bool nBetween(const T& val, const T& min, const T& max) { return val >= min && val <= max; }
+template <typename T, typename F> T nSlerp(const T& left, const T& right, const F& t) { return left + t * (right - left); }
 
-template <typename T>
-bool nSideBetween(const T& val, const T& min, const T& max) { return min <= val && val < max; }
+template <typename T> bool nBetween(const T& val, const T& min, const T& max) { return val >= min && val <= max; }
 
-template <typename T>
-bool nSamePositivity(const T& val, const T& other) { return (val <= 0 && other <= 0) || (val >= 0 && other >= 0); }
+template <typename T> bool nSideBetween(const T& val, const T& min, const T& max) { return min <= val && val < max; }
 
-template <typename T>
-consteval T nConsteval(T val) { return val; }
+template <typename T> bool nSamePositivity(const T& val, const T& other) { return (val <= 0 && other <= 0) || (val >= 0 && other >= 0); }
+
+template <typename T> consteval T nConsteval(T val) { return val; }
 
 inline bool dEquals(const double v1, const double v2) noexcept { return std::abs(v1 - v2) < EpsilonCheck; }
 inline bool dLess(const double v1, const double v2) noexcept { return v1 < v2 && !dEquals(v1, v2); }
@@ -57,8 +49,7 @@ inline String dtoString(const double val) {
 	return stream.str();
 }
 
-template <typename T>
-void nMinMaxOf(QWORD& outMin, QWORD& outMax, const QWORD total, const T values[]) {
+template <typename T> void nMinMaxOf(QWORD& outMin, QWORD& outMax, const QWORD total, const T values[]) {
 	outMin = outMax = 0;
 	for (QWORD i = 0; i < total; ++i) {
 		if (values[i] < values[outMin]) outMin = i;
@@ -66,8 +57,7 @@ void nMinMaxOf(QWORD& outMin, QWORD& outMax, const QWORD total, const T values[]
 	}
 }
 
-template <typename T>
-T nSquare(const T& val) { return val * val; }
+template <typename T> T nSquare(const T& val) { return val * val; }
 
 
 class [[carlbeks::TriviallyCopyable]] Vector3D;

@@ -9,6 +9,7 @@ Checks: >
   -bugprone-forward-declaration-namespace,
   -bugprone-reserved-identifier,
   -bugprone-unhandled-exception-at-new,
+  -cert-oop54-cpp,
   -cert-err58-cpp,
   -cppcoreguidelines-avoid-*,
   -cppcoreguidelines-init-variables,

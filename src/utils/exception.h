@@ -75,6 +75,14 @@ public:
 	ZeroValueException(const String& msg) : Exception(msg, &type) {}
 };
 
+class NullReferenceException final : public Exception {
+	inline static const String type = L"NullReferenceException";
+
+public:
+	NullReferenceException(String&& msg) : Exception(std::move(msg), &type) {}
+	NullReferenceException(const String& msg) : Exception(msg, &type) {}
+};
+
 class LoggableString {
 	friend class PublicLogger;
 	String str;

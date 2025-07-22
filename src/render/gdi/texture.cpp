@@ -49,6 +49,7 @@ void GdiTextureManager::initialize() noexcept {
 }
 
 GdiTextureManager::GdiTextureManager(): null(L"null") {}
+GdiTextureManager::~GdiTextureManager() { unload(); }
 
 void GdiTextureManager::load() noexcept(false) {
 	if (game.options.resource.lazyLoad) return;
