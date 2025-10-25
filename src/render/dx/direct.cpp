@@ -1,0 +1,832 @@
+﻿#define HBP_DX_DEBUG true
+
+#pragma comment(lib, "d3d12.lib")
+#pragma comment(lib, "dxgi.lib")
+#pragma comment(lib, "D3DCompiler.lib")
+#pragma comment(lib, "dxguid.lib")
+// #pragma comment(lib, "d3d11.lib")
+// #pragma comment(lib, "d2d1.lib")
+// #pragma comment(lib, "dwrite.lib")
+
+#include <map>
+#include "direct.hpp"
+#include <d3dcompiler.h>
+#if HBP_DX_DEBUG
+#include <dxgidebug.h>
+#endif
+
+#include "src\utils\exception.hpp"
+#include "shader.hpp"
+#include "src\main.hpp"
+
+#define ifFailed(r, info) if (FAILED(r)) return Logger.of(info " Error: ", getError(r)).error(), true
+#define elseSucceeded(expr) else { expr; }
+#define HBP_DX_RESET(comptr) if (comptr) comptr.Reset()
+#define CrashReturn(r, info, ret) if (FAILED(r)) { Logger.of(info " Error: ", renderer.getError(r)).error(), game.crash(info); return ret; }
+#define DiscardReturn(r) (r)
+
+static constexpr D3D12_INPUT_ELEMENT_DESC TEXTURE_LAYOUT[] = {
+	{ "POSITION", 0, DXGI_FORMAT_R32G32B32_FLOAT, 0, 0, D3D12_INPUT_CLASSIFICATION_PER_VERTEX_DATA, 0 },
+	{ "COLOR", 0, DXGI_FORMAT_R32_UINT, 0, 12, D3D12_INPUT_CLASSIFICATION_PER_VERTEX_DATA, 0 },
+	{ "TEXCOORD", 0, DXGI_FORMAT_R32G32_FLOAT, 0, 16, D3D12_INPUT_CLASSIFICATION_PER_VERTEX_DATA, 0 },
+	{ "NORMAL", 0, DXGI_FORMAT_R16G16B16A16_SINT, 0, 24, D3D12_INPUT_CLASSIFICATION_PER_VERTEX_DATA, 0 }
+};
+static constexpr size_t TEXTURE_LAYOUT_SIZE = 4;
+
+static constexpr D3D12_INPUT_ELEMENT_DESC COLORED_LAYOUT[] = {
+	{ "POSITION", 0, DXGI_FORMAT_R32G32B32_FLOAT, 0, 0, D3D12_INPUT_CLASSIFICATION_PER_VERTEX_DATA, 0 },
+	{ "COLOR", 0, DXGI_FORMAT_R32_UINT, 0, 12, D3D12_INPUT_CLASSIFICATION_PER_VERTEX_DATA, 0 }
+};
+static constexpr size_t COLORED_LAYOUT_SIZE = 2;
+
+static Map<HRESULT, String> errors;
+
+void initializeReturnCode(Map<HRESULT, String>& errors) {
+	if (!errors.empty()) return;
+	errors.emplace(D3D12_ERROR_ADAPTER_NOT_FOUND, L"D3D12_ERROR_ADAPTER_NOT_FOUND: 指定的缓存PSO是在不同的适配器上创建的，不能在当前适配器上重复使用");
+	errors.emplace(D3D12_ERROR_DRIVER_VERSION_MISMATCH, L"D3D12_ERROR_DRIVER_VERSION_MISMATCH: 指定的缓存PSO是在不同的驱动程序版本上创建的，不能在当前适配器上重复使用");
+	errors.emplace(DXGI_ERROR_INVALID_CALL, L"DXGI_ERROR_INVALID_CALL: 方法调用无效。例如，方法的参数可能不是有效的指针");
+	// errors.emplace(DXGI_ERROR_WAS_STILL_DRAWING, L"DXGI_ERROR_WAS_STILL_DRAWING: 将信息传输到此图面或从此图面传输信息的上一个blit不完整"); // 重复项
+	errors.emplace(E_FAIL, L"E_FAIL: 尝试创建启用了调试层且未安装该层的设备");
+	errors.emplace(E_INVALIDARG, L"E_INVALIDARG: 将无效参数传递给返回函数");
+	errors.emplace(E_OUTOFMEMORY, L"E_OUTOFMEMORY: Direct3D无法分配足够的内存来完成调用");
+	errors.emplace(E_NOTIMPL, L"E_NOTIMPL: 方法调用不是使用传递的参数组合实现的");
+	errors.emplace(S_FALSE, L"S_FALSE： 备用成功值，指示成功但非标准完成（精确含义取决于上下文）");
+	errors.emplace(S_OK, L"S_OK: 未发生错误");
+	errors.emplace(DXGI_ERROR_ACCESS_DENIED, L"DXGI_ERROR_ACCESS_DENIED: 您尝试使用没有所需访问权限的资源。 此错误通常是在写入具有只读访问权限的共享资源时导致的");
+	errors.emplace(DXGI_ERROR_ACCESS_LOST, L"DXGI_ERROR_ACCESS_LOST: 桌面重复接口无效。当桌面上显示不同类型的图像时，桌面重复界面通常会失效");
+	errors.emplace(DXGI_ERROR_ALREADY_EXISTS, L"DXGI_ERROR_ALREADY_EXISTS: 所需的元素已存在。如果不是第一次调用函数，则DXGIDeclareAdapterRemovalSupport会返回此函数");
+	errors.emplace(DXGI_ERROR_CANNOT_PROTECT_CONTENT, L"DXGI_ERROR_CANNOT_PROTECT_CONTENT: DXGI无法在交换链上提供内容保护。此错误通常是由较旧的驱动程序引起的，或者当你使用与内容保护不兼容的交换链时");
+	errors.emplace(DXGI_ERROR_DEVICE_HUNG, L"DXGI_ERROR_DEVICE_HUNG: 由于应用程序发送的命令格式不正确，应用程序的设备出现故障。 这是一个设计时问题，应进行调查和修复");
+	errors.emplace(DXGI_ERROR_DEVICE_REMOVED, L"DXGI_ERROR_DEVICE_REMOVED: 视频卡已实际从系统中删除，或者视频卡的驱动程序升级。 应用程序应销毁并重新创建设备。有关调试问题的帮助，请调用ID3D10Device::GetDeviceRemovedReason");
+	errors.emplace(DXGI_ERROR_DEVICE_RESET, L"DXGI_ERROR_DEVICE_RESET: 由于命令格式不正确，设备失败。这是一个运行时问题；应用程序应销毁并重新创建设备");
+	errors.emplace(DXGI_ERROR_DRIVER_INTERNAL_ERROR, L"DXGI_ERROR_DRIVER_INTERNAL_ERROR: 驱动程序遇到问题，并已进入设备删除状态");
+	errors.emplace(DXGI_ERROR_FRAME_STATISTICS_DISJOINT, L"DXGI_ERROR_FRAME_STATISTICS_DISJOINT: 例如，某个事件（电源周期）中断了当前统计信息的收集");
+	errors.emplace(DXGI_ERROR_GRAPHICS_VIDPN_SOURCE_IN_USE, L"DXGI_ERROR_GRAPHICS_VIDPN_SOURCE_IN_USE: 应用程序尝试获取输出的独占所有权，但失败，因为应用程序中的一些其他应用程序（或设备）已获取所有权");
+	errors.emplace(DXGI_ERROR_MORE_DATA, L"DXGI_ERROR_MORE_DATA: 应用程序提供的缓冲区不够大，无法容纳请求的数据");
+	errors.emplace(DXGI_ERROR_NAME_ALREADY_EXISTS, L"DXGI_ERROR_NAME_ALREADY_EXISTS: 在调用IDXGIResource1::CreateSharedHandle时提供的资源名称已与某些其他资源相关联");
+	errors.emplace(DXGI_ERROR_NONEXCLUSIVE, L"DXGI_ERROR_NONEXCLUSIVE: 全局计数器资源正在使用中，Direct3D设备当前无法使用计数器资源");
+	errors.emplace(DXGI_ERROR_NOT_CURRENTLY_AVAILABLE, L"DXGI_ERROR_NOT_CURRENTLY_AVAILABLE: 资源或请求当前不可用，但以后可能会变得可用");
+	errors.emplace(DXGI_ERROR_NOT_FOUND, L"DXGI_ERROR_NOT_FOUND: 调用IDXGIObject::GetPrivateData 时，不会将传入的 GUID识别为以前传递给IDXGIObject::SetPrivateData或IDXGIObject::SetPrivateDataInterface的GUID。调用IDXGIFactory::EnumAdapters或IDXGIAdapter::EnumOutputs时，枚举的序号已超过范围");
+	errors.emplace(DXGI_ERROR_REMOTE_CLIENT_DISCONNECTED, L"DXGI_ERROR_REMOTE_CLIENT_DISCONNECTED: DXGI_ERROR_REMOTE_CLIENT_DISCONNECTED预留");
+	errors.emplace(DXGI_ERROR_REMOTE_OUTOFMEMORY, L"DXGI_ERROR_REMOTE_OUTOFMEMORY: DXGI_ERROR_REMOTE_OUTOFMEMORY预留");
+	errors.emplace(DXGI_ERROR_RESTRICT_TO_OUTPUT_STALE, L"DXGI_ERROR_RESTRICT_TO_OUTPUT_STALE: 交换链内容受限（监视器）的DXGI输出现在已断开连接或更改");
+	errors.emplace(DXGI_ERROR_SDK_COMPONENT_MISSING, L"DXGI_ERROR_SDK_COMPONENT_MISSING: 操作依赖于缺少或不匹配的SDK组件");
+	errors.emplace(DXGI_ERROR_SESSION_DISCONNECTED, L"DXGI_ERROR_SESSION_DISCONNECTED: 远程桌面服务会话当前已断开连接");
+	errors.emplace(DXGI_ERROR_UNSUPPORTED, L"DXGI_ERROR_UNSUPPORTED: 设备或驱动程序不支持请求的功能");
+	errors.emplace(DXGI_ERROR_WAIT_TIMEOUT, L"DXGI_ERROR_WAIT_TIMEOUT: 在下一个桌面帧可用之前经过的超时间隔");
+	errors.emplace(DXGI_ERROR_WAS_STILL_DRAWING, L"DXGI_ERROR_WAS_STILL_DRAWING: GPU在调用执行操作时处于繁忙状态，并且未执行或计划操作");
+}
+
+void DirectCamera::calculatePitchYaw() noexcept {
+	// 最大俯仰
+	double constexpr limit = 1.57;
+	if (pitch > limit) pitch = limit;
+	if (pitch < -limit) pitch = -limit;
+	direction.setX(std::cos(pitch) * std::sin(yaw));
+	direction.setY(std::sin(pitch));
+	direction.setZ(std::cos(pitch) * std::cos(yaw));
+}
+
+void DirectCamera::calculate(const double width, const double height) noexcept {
+	const Vector3D
+		D = direction.getNormalized(),
+		R = Vector3D(0, -1, 0).cross(D).normalize(),
+		U = R.clone().cross(D).normalize();
+	const Matrix4D view = Matrix4D(
+		R.getX(), R.getY(), R.getZ(), -(R * position),
+		U.getX(), U.getY(), U.getZ(), -(U * position),
+		D.getX(), D.getY(), D.getZ(), -(D * position),
+		0, 0, 0, 1
+	);
+	Matrix4D proj;
+	const double vt = 1 / std::tan(fieldOfView * 0.5); // 投影系数
+	if (projection == Perspective) { // 景深投影
+		const double aspectReversed = height / width; // 反宽高比
+		proj = Matrix4D(
+			aspectReversed * vt, 0, 0, 0,
+			0, vt, 0, 0,
+			0, 0, farthestDistance / (farthestDistance - nearestDistance), -nearestDistance * farthestDistance / (farthestDistance - nearestDistance),
+			0, 0, 1, 0
+		);
+	}
+	else // 平行投影
+		proj = Matrix4D(
+			2.0 / width, 0, 0, 0,
+			0, 2.0 / height, 0, 0,
+			0, 0, -2.0 / (farthestDistance - nearestDistance), -(farthestDistance + nearestDistance) / (farthestDistance - nearestDistance),
+			0, 0, 0, 1
+		);
+	DirectMatrixFromMatrix(proj.multiply(view).transpose(), conMatrix); // 获得转换矩阵
+}
+
+bool DirectResource::resize(DirectRenderer& renderer, unsigned long long& amount, const size_t unitSize) noexcept {
+	if (currentSize > amount * unitSize) return false;
+	amount >>= 2, amount *= 5;
+	currentSize = amount * unitSize;
+	return resize(renderer, currentSize);
+}
+
+bool DirectResource::resize(DirectRenderer& renderer, const size_t unitSize) noexcept {
+	if (unitSize < currentSize) return false;
+	buffer.Reset();
+	const D3D12_HEAP_PROPERTIES heapProps = CD3DX12_HEAP_PROPERTIES(D3D12_HEAP_TYPE_UPLOAD);
+	const D3D12_RESOURCE_DESC indexDesc = CD3DX12_RESOURCE_DESC::Buffer(currentSize); // UINT1
+	HRESULT hr = 0;
+	hr = renderer.device->CreateCommittedResource(&heapProps, D3D12_HEAP_FLAG_NONE, &indexDesc, D3D12_RESOURCE_STATE_GENERIC_READ, nullptr, IID_PPV_ARGS(&buffer));
+	if (FAILED(hr)) return Logger.of(L"Failed to reassign for coloredIndexBuffer. Error: ", renderer.getError(hr)).error(), true;
+	return false;
+}
+
+char* DirectResource::map(DirectRenderer& renderer) noexcept {
+	char* ret;
+	HRESULT result = 0;
+	result = buffer->Map(0, nullptr, reinterpret_cast<void**>(&ret));
+	CrashReturn(result, L"Failed to map resource.", nullptr);
+	status = Map;
+	return ret;
+}
+
+void DirectResource::unmap() noexcept {
+	buffer->Unmap(0, nullptr);
+	status = Unmap;
+}
+
+void DirectResource::finalize() noexcept {
+	if (status == Map) unmap();
+	HBP_DX_RESET(buffer);
+}
+
+ID3D12Resource* DirectResource::getBuffer() const noexcept { return buffer.Get(); }
+
+bool DirectFrame::reassignColoredBuffer(const size_t size) noexcept { return coloredVertex.resize(renderer, maxColoredVertexCount = size, sizeof(ColoredVertex)); }
+bool DirectFrame::reassignTextureBuffer(const size_t size) noexcept { return textureVertex.resize(renderer, maxTextureVertexCount = size, sizeof(TextureVertex)); }
+bool DirectFrame::reassignColoredIndexBuffer(const size_t size) noexcept { return coloredIndex.resize(renderer, maxColoredIndexCount = size, sizeof(unsigned int)); }
+
+bool DirectFrame::reassignDepthStencil() noexcept {
+	HRESULT result = 0;
+
+	const D3D12_RESOURCE_DESC depthStencilDesc = CD3DX12_RESOURCE_DESC::Tex2D(
+		DXGI_FORMAT_D32_FLOAT,
+		renderer.getWidth(), renderer.getHeight(),
+		1, 0, 1, 0,
+		D3D12_RESOURCE_FLAG_ALLOW_DEPTH_STENCIL
+	);
+	D3D12_CLEAR_VALUE depthOptimizedClearValue = {};
+	depthOptimizedClearValue.Format = DXGI_FORMAT_D32_FLOAT;
+	depthOptimizedClearValue.DepthStencil = { 1.0f, 0 };
+	const CD3DX12_HEAP_PROPERTIES properties { D3D12_HEAP_TYPE_DEFAULT };
+	result = renderer.device->CreateCommittedResource(
+		&properties,
+		D3D12_HEAP_FLAG_NONE,
+		&depthStencilDesc,
+		D3D12_RESOURCE_STATE_DEPTH_WRITE,
+		&depthOptimizedClearValue,
+		IID_PPV_ARGS(&depthStencilView)
+	);
+	if (FAILED(result)) return Logger.of(L"Failed to create dsv buffer. Error: ", result).error(), true;
+	// 创建深度视图
+	D3D12_DEPTH_STENCIL_VIEW_DESC dsvDesc = {};
+	dsvDesc.Format = DXGI_FORMAT_D32_FLOAT;
+	dsvDesc.ViewDimension = D3D12_DSV_DIMENSION_TEXTURE2D;
+	dsvDesc.Flags = D3D12_DSV_FLAG_NONE;
+	renderer.device->CreateDepthStencilView(depthStencilView.Get(), &dsvDesc, renderer.dsvHeap->GetCPUDescriptorHandleForHeapStart());
+	return false;
+}
+
+bool DirectFrame::initialize(unsigned int index, CD3DX12_CPU_DESCRIPTOR_HANDLE& rtvHandle, CD3DX12_CPU_DESCRIPTOR_HANDLE& dsvHandle) {
+	HRESULT hr = 0;
+	hr = renderer.swapChain->GetBuffer(index, IID_PPV_ARGS(&renderTargetView));
+	if (FAILED(hr)) return Logger.of(L"Failed to get rtv buffer: n = ", index, L". Error: ", renderer.getError(hr)).error(), true;
+	if (reassignDepthStencil()) return true;
+
+	renderer.device->CreateRenderTargetView(renderTargetView.Get(), nullptr, rtvHandle);
+	rtvHandle.Offset(1, renderer.rtvDescriptorSize);
+	renderer.device->CreateDepthStencilView(depthStencilView.Get(), nullptr, dsvHandle);
+	dsvHandle.Offset(1, renderer.dsvDescriptorSize);
+
+	hr = renderer.device->CreateCommandAllocator(D3D12_COMMAND_LIST_TYPE_DIRECT, IID_PPV_ARGS(&commandAllocator));
+	if (FAILED(hr)) return Logger.of(L"Failed to create command allocator: n = ", index, L". Error: ", renderer.getError(hr)).error(), true;
+	hr = renderer.device->CreateCommandList1(0, D3D12_COMMAND_LIST_TYPE_DIRECT, D3D12_COMMAND_LIST_FLAG_NONE, IID_PPV_ARGS(&commandList));
+	if (FAILED(hr)) return Logger.of(L"Failed to create command list: n = ", index, L". Error: ", renderer.getError(hr)).error(), true;
+
+	if (reassignColoredBuffer(1024)) return true;
+	if (reassignTextureBuffer(1024)) return true;
+	if (reassignColoredIndexBuffer(1024)) return true;
+	if (constants.resize(renderer, sizeof CameraMatrix)) return true;
+	return false;
+}
+
+void DirectFrame::awaitFrame() noexcept {
+	if (state >= Completed) return;
+	while (state < Process) _mm_pause();
+	renderer.awaitSignal(thisSignal);
+	// Logger.trace(L"Signal complete (AwaitFrame): " + std::to_wstring(thisSignal));
+	state = Completed;
+}
+
+void DirectFrame::finalize() noexcept {
+	awaitFrame();
+	HBP_DX_RESET(commandList);
+	HBP_DX_RESET(commandAllocator);
+	constants.finalize();
+	coloredVertex.finalize();
+	textureVertex.finalize();
+	coloredIndex.finalize();
+	HBP_DX_RESET(renderTargetView);
+	HBP_DX_RESET(depthStencilView);
+}
+
+void DirectFrame::debugCustom(unsigned int index) noexcept {
+	Logger.of(L"DirectFrame @ index ", index).debug();
+	Logger.of(L"    commandAllocator @ ", ptrtow(commandAllocator.Get())).debug();
+	Logger.of(L"    commandList @ ", ptrtow(commandList.Get())).debug();
+	Logger.of(L"    constants @ ", ptrtow(constants.getBuffer())).debug();
+	Logger.of(L"    coloredVertex @ ", ptrtow(coloredVertex.getBuffer())).debug();
+	Logger.of(L"    textureVertex @ ", ptrtow(textureVertex.getBuffer())).debug();
+	Logger.of(L"    coloredIndex @ ", ptrtow(coloredIndex.getBuffer())).debug();
+	Logger.of(L"    renderTargetView @ ", ptrtow(renderTargetView.Get())).debug();
+	Logger.of(L"    thisSignal = ", thisSignal).debug();
+	Logger.of(L"    maxColoredIndexCount = ", maxColoredIndexCount).debug();
+	Logger.of(L"    maxColoredVertexCount = ", maxColoredVertexCount).debug();
+	Logger.of(L"    maxTextureVertexCount = ", maxTextureVertexCount).debug();
+	Logger.of(L"    actualColoredIndexCount = ", actualColoredIndexCount).debug();
+	Logger.of(L"    actualColoredVertexCount = ", actualColoredVertexCount).debug();
+	Logger.of(L"    actualTextureVertexCount = ", actualTextureVertexCount).debug();
+}
+
+void DirectFrame::begin() noexcept(false) {
+	awaitFrame();
+	state = Await;
+	HRESULT result = 0;
+	// 1. 重置命令列表和分配器
+	result = commandAllocator->Reset();
+	CrashReturn(result, L"Failed to reset command allocator.",);
+	result = commandList->Reset(commandAllocator.Get(), renderer.coloredPipelineState.Get());
+	CrashReturn(result, L"Failed to reset command list.",);
+	{
+		const D3D12_RESOURCE_BARRIER renderBarrier = CD3DX12_RESOURCE_BARRIER::Transition(renderTargetView.Get(), D3D12_RESOURCE_STATE_PRESENT, D3D12_RESOURCE_STATE_RENDER_TARGET);
+		commandList->ResourceBarrier(1, &renderBarrier); // 启动渲染前，需要设置成RENDER_TARGET状态
+	}
+	// 2. 设置视口和裁剪区域
+	commandList->RSSetViewports(1, &renderer.viewport);
+	commandList->RSSetScissorRects(1, &renderer.scissorRect);
+	// 3. 设置渲染目标
+	const CD3DX12_CPU_DESCRIPTOR_HANDLE rtvHandle(renderer.rtvHeap->GetCPUDescriptorHandleForHeapStart(), static_cast<int>(renderer.currentFrame), renderer.rtvDescriptorSize);
+	const CD3DX12_CPU_DESCRIPTOR_HANDLE dsvHandle(renderer.dsvHeap->GetCPUDescriptorHandleForHeapStart(), static_cast<int>(renderer.currentFrame), renderer.dsvDescriptorSize);
+	commandList->OMSetRenderTargets(1, &rtvHandle, 0, &dsvHandle);
+	// 4. 清除渲染目标
+	constexpr float clearColor[] = { 0, 0, 0, 1.0f };
+	commandList->ClearRenderTargetView(rtvHandle, clearColor, 0, nullptr);
+	commandList->ClearDepthStencilView(dsvHandle, D3D12_CLEAR_FLAG_DEPTH, 1.0f, 0, 0, nullptr);
+	// 5.0. 设置图形管线状态
+	commandList->SetGraphicsRootSignature(renderer.rootSignature.Get());
+	commandList->IASetPrimitiveTopology(D3D_PRIMITIVE_TOPOLOGY_TRIANGLELIST);
+	commandList->SetPipelineState(renderer.coloredPipelineState.Get());
+	state = Accept;
+}
+
+bool DirectFrame::submitVertices() noexcept {
+	if (!actualColoredVertexCount) return false;
+	if (!actualColoredIndexCount) return false;
+	if (actualColoredVertexCount >= maxColoredVertexCount) if (reassignColoredBuffer(actualColoredVertexCount)) return true;
+	if (actualColoredIndexCount >= maxColoredIndexCount) if (reassignColoredIndexBuffer(actualColoredIndexCount)) return true;
+	char* vertex = coloredVertex.map(renderer);
+	if (!vertex) return true;
+	char* index = coloredIndex.map(renderer);
+	if (!index) return true;
+	for (const auto& [vertices, indices] : coloredBuffer) {
+		memcpy(vertex, vertices.data(), vertices.size() * sizeof(ColoredVertex));
+		vertex += vertices.size() * sizeof(ColoredVertex);
+		memcpy(index, indices.data(), indices.size() * sizeof(unsigned int));
+		index += indices.size() * sizeof(unsigned int);
+	}
+	coloredVertex.unmap();
+	coloredIndex.unmap();
+	const D3D12_VERTEX_BUFFER_VIEW coloredView = {
+		.BufferLocation = coloredVertex.getBuffer()->GetGPUVirtualAddress(),
+		.SizeInBytes = static_cast<unsigned int>(actualColoredVertexCount * sizeof(ColoredVertex)),
+		.StrideInBytes = sizeof(ColoredVertex)
+	};
+	commandList->IASetVertexBuffers(0, 1, &coloredView);
+	const D3D12_INDEX_BUFFER_VIEW coloredView2 = {
+		.BufferLocation = coloredIndex.getBuffer()->GetGPUVirtualAddress(),
+		.SizeInBytes = static_cast<unsigned int>(actualColoredIndexCount * sizeof(unsigned int)),
+		.Format = DXGI_FORMAT_R32_UINT
+	};
+	commandList->IASetIndexBuffer(&coloredView2);
+	commandList->DrawIndexedInstanced(actualColoredIndexCount, 1, 0, 0, 0);
+	actualColoredVertexCount = 0;
+	actualColoredIndexCount = 0;
+	coloredBuffer.clear();
+	return false;
+}
+
+void DirectFrame::end() {
+	assertStatus(Accept, true);
+	// 5. 计算相机；上传常量堆
+	{
+		char* buffer = constants.map(renderer);
+		if (!buffer) return;
+		if (renderer.camera.consumeChanges()) {
+			renderer.camera.calculate(renderer.viewport.Width, renderer.viewport.Height);
+			renderer.camera.copy(buffer);
+			commandList->SetGraphicsRootConstantBufferView(0, constants.getBuffer()->GetGPUVirtualAddress()); // 传给GPU
+		}
+		buffer += sizeof CameraMatrix;
+		const unsigned int sizes[2] { renderer.getBufferSizeCP(), getBufferSizeAT() }; // TODO(EmsiaetKadosh): 填入CB+PB/AB+TB的大小
+		memcpy(buffer, sizes, 2 * sizeof(unsigned int));
+		constants.unmap();
+	}
+	// 6. 提交顶点
+	submitVertices();
+	state = Upload;
+	HRESULT result = 0;
+	// 7. 提交命令列表
+	{
+		const D3D12_RESOURCE_BARRIER renderBarrier = CD3DX12_RESOURCE_BARRIER::Transition(renderTargetView.Get(), D3D12_RESOURCE_STATE_RENDER_TARGET, D3D12_RESOURCE_STATE_PRESENT);
+		commandList->ResourceBarrier(1, &renderBarrier); // 切换为PRESENT再Present
+	}
+	result = commandList->Close();
+	CrashReturn(result, L"Failed to close command list.",);
+	ID3D12CommandList* cmdLists[] = { commandList.Get() };
+	renderer.commandQueue->ExecuteCommandLists(1, cmdLists);
+	// 8. 呈现交换链
+	result = renderer.swapChain->Present(1, 0);
+	CrashReturn(result, L"Failed to present swap chain.",);
+	thisSignal = renderer.requestSignal();
+	state = Process;
+}
+
+void DirectFrame::assertStatus(const State expected, const bool strict) const noexcept(false) {
+	if (state == expected) return;
+	if (strict || state < expected) throw ThreadInterferenceException(L"Current state is ... but expected ...");
+}
+
+void DirectFrame::drawColor(ColoredSet&& set) noexcept(false) {
+	assertStatus(Accept, true);
+	coloredBuffer.push_back(std::move(set));
+	auto& [vertices, indices] = coloredBuffer.back();
+	for (unsigned int& i : indices) i += actualColoredVertexCount;
+	actualColoredVertexCount += vertices.size();
+	actualColoredIndexCount += indices.size();
+}
+
+void DirectFrame::drawColor(const ColoredSet& set) noexcept(false) {
+	assertStatus(Accept, true);
+	coloredBuffer.push_back(set);
+	auto& [vertices, indices] = coloredBuffer.back();
+	for (unsigned int& i : indices) i += actualColoredVertexCount;
+	actualColoredVertexCount += vertices.size();
+	actualColoredIndexCount += indices.size();
+}
+
+unsigned int DirectFrame::getBufferSizeAT() const noexcept { return 0; }
+
+bool DirectRenderer::initializeFactory() noexcept {
+	Logger.trace(L"Initializing factory");
+	HRESULT result;
+	int factoryFlag = 0;
+	if constexpr (HBP_DX_DEBUG) {
+		ComPtr<ID3D12Debug1> debug;
+		result = D3D12GetDebugInterface(IID_PPV_ARGS(&debug));
+		ifFailed(result, L"Failed to get debug layer.");
+		elseSucceeded(debug->EnableDebugLayer(); debug->SetEnableSynchronizedCommandQueueValidation(true); factoryFlag = DXGI_CREATE_FACTORY_DEBUG; Logger.info(L"DXGI debug layer enabled"));
+	}
+
+	result = CreateDXGIFactory2(factoryFlag, IID_PPV_ARGS(&factory));
+	ifFailed(result, L"Failed to create DXGI factory.");
+	return false;
+}
+
+bool DirectRenderer::initializeDevice(const bool requestHighPerformance) noexcept {
+	if (!factory) return true;
+	Logger.trace(L"Initializing device");
+	const DXGI_GPU_PREFERENCE flag = requestHighPerformance ? DXGI_GPU_PREFERENCE_HIGH_PERFORMANCE : DXGI_GPU_PREFERENCE_UNSPECIFIED;
+	HRESULT result = 0;
+	ComPtr<IDXGIAdapter1> adapter;
+	for (unsigned int index = 0; SUCCEEDED(factory->EnumAdapterByGpuPreference(index, flag, IID_PPV_ARGS(&adapter))); ++index) { // 按性能枚举适配器
+		DXGI_ADAPTER_DESC1 desc;
+		result = adapter->GetDesc1(&desc);
+		if (FAILED(result)) continue;
+		if (desc.Flags & DXGI_ADAPTER_FLAG_SOFTWARE) continue;
+		if (SUCCEEDED(D3D12CreateDevice(adapter.Get(), D3D_FEATURE_LEVEL_12_1, _uuidof(ID3D12Device), nullptr))) break;
+	}
+	if (!adapter) {
+		Logger.error(L"No suitable adapter found.");
+		return true;
+	}
+	result = D3D12CreateDevice(adapter.Get(), D3D_FEATURE_LEVEL_12_1, IID_PPV_ARGS(&device));
+	ifFailed(result, L"Failed to create device.");
+	if constexpr (true) { // 检查光线追踪支持等新特性。
+		D3D12_FEATURE_DATA_D3D12_OPTIONS5 features = {};
+		if (SUCCEEDED(device->CheckFeatureSupport(D3D12_FEATURE_D3D12_OPTIONS5, &features, sizeof(features)))) if (features.RaytracingTier < D3D12_RAYTRACING_TIER_1_0) Logger.warn(L"Raytracing not supported!");
+	}
+	return false;
+}
+
+bool DirectRenderer::initializeCommandQueue() noexcept {
+	Logger.trace(L"Initializing command queue");
+	HRESULT result = 0;
+	D3D12_COMMAND_QUEUE_DESC queueDesc = {};
+	queueDesc.Flags = D3D12_COMMAND_QUEUE_FLAG_NONE;
+	queueDesc.Type = D3D12_COMMAND_LIST_TYPE_DIRECT;
+	result = device->CreateCommandQueue(&queueDesc, IID_PPV_ARGS(&commandQueue));
+	ifFailed(result, L"Failed to create command queue.");
+	return false;
+}
+
+bool DirectRenderer::initializeSwapChain(const HWND hwnd) noexcept {
+	Logger.trace(L"Initializing swap chain");
+	HRESULT result = 0;
+	DXGI_SWAP_CHAIN_DESC1 desc = {};
+	desc.BufferCount = swapFrameCount;
+	desc.Width = getWidth();
+	desc.Height = getHeight();
+	desc.Format = DXGI_FORMAT_R8G8B8A8_UNORM;
+	desc.BufferUsage = DXGI_USAGE_RENDER_TARGET_OUTPUT;
+	desc.SwapEffect = DXGI_SWAP_EFFECT_FLIP_DISCARD;
+	desc.SampleDesc.Count = 1;
+	desc.SampleDesc.Quality = 0;
+	desc.Flags = DXGI_SWAP_CHAIN_FLAG_ALLOW_MODE_SWITCH;
+
+	ComPtr<IDXGISwapChain1> chain;
+	result = factory->CreateSwapChainForHwnd(commandQueue.Get(), hwnd, &desc, nullptr, nullptr, &chain);
+	ifFailed(result, L"Failed to create swap chain.");
+	result = chain.As(&swapChain);
+	ifFailed(result, L"Failed to cast swap chain");
+	return false;
+}
+
+bool DirectRenderer::initializeHeap() noexcept {
+	Logger.trace(L"Initializing heap");
+	HRESULT result = 0;
+	D3D12_DESCRIPTOR_HEAP_DESC desc = {};
+	desc.NumDescriptors = swapFrameCount;
+	desc.Type = D3D12_DESCRIPTOR_HEAP_TYPE_RTV;
+	desc.Flags = D3D12_DESCRIPTOR_HEAP_FLAG_NONE;
+	result = device->CreateDescriptorHeap(&desc, IID_PPV_ARGS(&rtvHeap));
+	ifFailed(result, L"Failed to create rtv heap.");
+	rtvDescriptorSize = device->GetDescriptorHandleIncrementSize(D3D12_DESCRIPTOR_HEAP_TYPE_RTV);
+
+	desc = {};
+	desc.NumDescriptors = swapFrameCount;
+	desc.Type = D3D12_DESCRIPTOR_HEAP_TYPE_DSV;
+	desc.Flags = D3D12_DESCRIPTOR_HEAP_FLAG_NONE;
+	result = device->CreateDescriptorHeap(&desc, IID_PPV_ARGS(&dsvHeap));
+	ifFailed(result, L"Failed to create dsv heap.");
+	return false;
+}
+
+bool DirectRenderer::initializeFence() noexcept {
+	Logger.trace(L"Initializing fence");
+	HRESULT hr = 0;
+	hr = device->CreateFence(0, D3D12_FENCE_FLAG_NONE, IID_PPV_ARGS(&fence));
+	ifFailed(hr, L"Failed to create fence.");
+	fenceValue = 1;
+	fenceEvent = CreateEventW(nullptr, FALSE, FALSE, nullptr);
+	if (fenceEvent == nullptr) {
+		ifFailed(HRESULT_FROM_WIN32(GetLastError()), L"Failed to create fence event.");
+		return true;
+	}
+	return false;
+}
+
+bool DirectRenderer::initializeShader() noexcept {
+	Logger.trace(L"Initializing shader");
+	ComPtr<ID3DBlob> err;
+	HRESULT hr = 0;
+	const size_t size = strlen(Shader);
+	//                            .......  ....... 分别是：源文件名（调试用）；宏定义
+	hr = D3DCompile(Shader, size, nullptr, nullptr, D3D_COMPILE_STANDARD_FILE_INCLUDE, "vColored", "vs_5_1", 0, 0, &coloredVertexShader, &err);
+	ifFailed(hr, L"Failed to compile colored VS.");
+	hr = D3DCompile(Shader, size, nullptr, nullptr, D3D_COMPILE_STANDARD_FILE_INCLUDE, "pColored", "ps_5_1", 0, 0, &coloredPixelShader, &err);
+	ifFailed(hr, L"Failed to compile colored PS.");
+	hr = D3DCompile(Shader, size, nullptr, nullptr, D3D_COMPILE_STANDARD_FILE_INCLUDE, "vTexture", "vs_5_1", 0, 0, &textureVertexShader, &err);
+	ifFailed(hr, L"Failed to compile texture VS.");
+	hr = D3DCompile(Shader, size, nullptr, nullptr, D3D_COMPILE_STANDARD_FILE_INCLUDE, "pTexture", "ps_5_1", 0, 0, &texturePixelShader, &err);
+	ifFailed(hr, L"Failed to compile texture PS.");
+	return false;
+}
+
+inline bool DirectRenderer::initializeRootSignature() noexcept {
+	Logger.trace(L"Initializing root signature");
+	CD3DX12_ROOT_PARAMETER slotRootParameter[2]; // 根签名Slot列表。在着色器中可以通过slot+index获取到信息，信息储存在描述符堆中。
+	CD3DX12_STATIC_SAMPLER_DESC samplerDesc = { 0 }; // 采样器描述符
+
+	const CD3DX12_DESCRIPTOR_RANGE range = CD3DX12_DESCRIPTOR_RANGE(D3D12_DESCRIPTOR_RANGE_TYPE_SRV, 1, 0);
+	slotRootParameter[0].InitAsConstantBufferView(0); // Slot 0: CBV类型，传递相机矩阵常量
+	slotRootParameter[1].InitAsDescriptorTable(1, &range); // Slot 1: SRV类型，用于传递纹理
+	samplerDesc.Filter = D3D12_FILTER_MIN_MAG_MIP_LINEAR;
+
+	const CD3DX12_ROOT_SIGNATURE_DESC rootSigDesc { 2, slotRootParameter, 1, &samplerDesc, D3D12_ROOT_SIGNATURE_FLAG_ALLOW_INPUT_ASSEMBLER_INPUT_LAYOUT }; // 用上述二者生成根签名描述符
+
+	ComPtr<ID3DBlob> serializedRootSig = nullptr;
+	ComPtr<ID3DBlob> errorBlob = nullptr;
+	HRESULT hr = 0;
+	hr = D3D12SerializeRootSignature(&rootSigDesc, D3D_ROOT_SIGNATURE_VERSION_1, &serializedRootSig, &errorBlob);
+	if (errorBlob != nullptr) Logger.error(atow(static_cast<char*>(errorBlob->GetBufferPointer())));
+	ifFailed(hr, L"Failed to serialize D3D12 root signature."); // 序列化
+	hr = device->CreateRootSignature(0, serializedRootSig->GetBufferPointer(), serializedRootSig->GetBufferSize(), IID_PPV_ARGS(&rootSignature));
+	ifFailed(hr, L"Failed to create D3D12 root signature"); // 最终创建
+	return false;
+}
+
+bool DirectRenderer::initializePipelineState() noexcept {
+	Logger.trace(L"Initializing pipeline state");
+	HRESULT result = 0;
+	// 填充PSO描述结构
+	D3D12_GRAPHICS_PIPELINE_STATE_DESC psoDesc = {};
+	psoDesc.pRootSignature = rootSignature.Get();
+	psoDesc.VS = CD3DX12_SHADER_BYTECODE(coloredVertexShader.Get());
+	psoDesc.PS = CD3DX12_SHADER_BYTECODE(coloredPixelShader.Get());
+	psoDesc.InputLayout = { COLORED_LAYOUT, COLORED_LAYOUT_SIZE };
+	psoDesc.NumRenderTargets = 1;
+	psoDesc.RTVFormats[0] = DXGI_FORMAT_R8G8B8A8_UNORM;
+	psoDesc.RasterizerState = CD3DX12_RASTERIZER_DESC(D3D12_DEFAULT);
+	psoDesc.RasterizerState.CullMode = D3D12_CULL_MODE_NONE;
+	psoDesc.BlendState = CD3DX12_BLEND_DESC(D3D12_DEFAULT);
+	psoDesc.BlendState.RenderTarget[0].BlendEnable = false;
+	psoDesc.DepthStencilState = CD3DX12_DEPTH_STENCIL_DESC(D3D12_DEFAULT);
+	psoDesc.DSVFormat = DXGI_FORMAT_D32_FLOAT;
+	psoDesc.PrimitiveTopologyType = D3D12_PRIMITIVE_TOPOLOGY_TYPE_TRIANGLE;
+	psoDesc.SampleDesc.Count = 1;
+	psoDesc.SampleDesc.Quality = 0;
+	psoDesc.SampleMask = UINT_MAX;
+	result = device->CreateGraphicsPipelineState(&psoDesc, IID_PPV_ARGS(&coloredPipelineState));
+	ifFailed(result, L"Failed to create graphics pipeline 1");
+	// 第二结构
+	D3D12_GRAPHICS_PIPELINE_STATE_DESC psoDesc2 = {};
+	psoDesc2.pRootSignature = rootSignature.Get();
+	psoDesc2.VS = CD3DX12_SHADER_BYTECODE(textureVertexShader.Get());
+	psoDesc2.PS = CD3DX12_SHADER_BYTECODE(texturePixelShader.Get());
+	psoDesc2.InputLayout = { TEXTURE_LAYOUT, TEXTURE_LAYOUT_SIZE };
+	psoDesc2.NumRenderTargets = 1;
+	psoDesc2.RTVFormats[0] = DXGI_FORMAT_R8G8B8A8_UNORM;
+	psoDesc2.RasterizerState = CD3DX12_RASTERIZER_DESC(D3D12_DEFAULT);
+	psoDesc2.BlendState = CD3DX12_BLEND_DESC(D3D12_DEFAULT);
+	psoDesc2.DepthStencilState = CD3DX12_DEPTH_STENCIL_DESC(D3D12_DEFAULT);
+	psoDesc2.DSVFormat = DXGI_FORMAT_D32_FLOAT;
+	psoDesc2.PrimitiveTopologyType = D3D12_PRIMITIVE_TOPOLOGY_TYPE_TRIANGLE;
+	psoDesc2.SampleDesc.Count = 1;
+	psoDesc2.SampleDesc.Quality = 0;
+	psoDesc2.SampleMask = UINT_MAX;
+	result = device->CreateGraphicsPipelineState(&psoDesc2, IID_PPV_ARGS(&texturePipelineState));
+	ifFailed(result, L"Failed to create graphics pipeline 2");
+	return false;
+}
+
+bool DirectRenderer::initializeFrames() noexcept {
+	Logger.trace(L"Initializing frames");
+	frames.clear();
+	frames.resize(swapFrameCount, DirectFrame(*this));
+	CD3DX12_CPU_DESCRIPTOR_HANDLE rtvHandle(rtvHeap->GetCPUDescriptorHandleForHeapStart());
+	CD3DX12_CPU_DESCRIPTOR_HANDLE dsvHandle(dsvHeap->GetCPUDescriptorHandleForHeapStart());
+	for (unsigned int i = 0; i < swapFrameCount; ++i) if (frames[i].initialize(i, rtvHandle, dsvHandle)) return true;
+	return false;
+}
+
+void DirectRenderer::finalizeFrames() noexcept { for (auto& frame : frames) frame.finalize(); }
+
+void DirectRenderer::finalizePipelineState() noexcept {
+	HBP_DX_RESET(coloredPipelineState);
+	HBP_DX_RESET(texturePipelineState);
+}
+
+void DirectRenderer::finalizeRootSignature() noexcept { HBP_DX_RESET(rootSignature); }
+
+void DirectRenderer::finalizeShader() noexcept {
+	HBP_DX_RESET(coloredVertexShader);
+	HBP_DX_RESET(coloredPixelShader);
+	HBP_DX_RESET(textureVertexShader);
+	HBP_DX_RESET(texturePixelShader);
+}
+
+void DirectRenderer::finalizeFence() noexcept { HBP_DX_RESET(fence); }
+
+void DirectRenderer::finalizeHeap() noexcept {
+	HBP_DX_RESET(rtvHeap);
+	HBP_DX_RESET(dsvHeap);
+}
+
+void DirectRenderer::finalizeSwapChain() noexcept {
+	if (swapChain) {
+		BOOL fullScreen = false;
+		HRESULT result = 0;
+		result = swapChain->GetFullscreenState(&fullScreen, nullptr);
+		if (fullScreen || FAILED(result))
+			DiscardReturn(swapChain->SetFullscreenState(false, nullptr));
+		swapChain.Reset();
+	}
+}
+
+void DirectRenderer::finalizeCommandQueue() noexcept { HBP_DX_RESET(commandQueue); }
+void DirectRenderer::finalizeDevice() noexcept { HBP_DX_RESET(device); }
+void DirectRenderer::finalizeFactory() noexcept { HBP_DX_RESET(factory); }
+
+unsigned long long DirectRenderer::requestSignal() noexcept {
+	const unsigned long long value = ++this->fenceValue;
+	HRESULT result = 0;
+	result = commandQueue->Signal(fence.Get(), value);
+	if (FAILED(result)) {
+		Logger.of(L"Failed to request signal. Error: ", getError(result)).error();
+		game.crash(L"Failed to request signal.");
+	}
+	return value;
+}
+
+void DirectRenderer::awaitSignal(unsigned long long fenceValue) noexcept {
+	if (fence->GetCompletedValue() < fenceValue) {
+		HRESULT result = 0;
+		result = fence->SetEventOnCompletion(fenceValue, fenceEvent);
+		if (FAILED(result)) {
+			Logger.of(L"Failed to wait fenceValue ", fenceValue, L". Error: ", getError(result)).error();
+			game.crash(L"Failed to wait fenceValue " + std::to_wstring(fenceValue) + L".");
+		}
+		else WaitForSingleObject(fenceEvent, INFINITE);
+	}
+}
+
+DirectFrame& DirectRenderer::switchNextFrame() noexcept {
+	++currentFrame %= swapFrameCount;
+	return frames[currentFrame];
+}
+
+bool DirectRenderer::isTerminating() const noexcept { return rendererState & Terminating; }
+bool DirectRenderer::isReady() const noexcept { return rendererState & Ready && !isTerminating(); }
+bool DirectRenderer::isRendering() const noexcept { return rendererState & Rendering; }
+bool DirectRenderer::builtinResize() noexcept { return false; }
+
+bool DirectRenderer::initialize(const HWND hwnd) noexcept {
+	if (rendererState != Uninitialized) return false;
+	initializeReturnCode(errors);
+	scissorRect.left = 0;
+	scissorRect.top = 0;
+	scissorRect.right = width;
+	scissorRect.bottom = height;
+	viewport.Width = static_cast<float>(width);
+	viewport.Height = static_cast<float>(height);
+	return
+		initializeFactory() ||
+		initializeDevice(true) ||
+		initializeCommandQueue() ||
+		initializeSwapChain(hwnd) ||
+		initializeHeap() ||
+		initializeFence() ||
+		initializeShader() ||
+		initializeRootSignature() ||
+		initializePipelineState() ||
+		initializeFrames() ||
+		// (debugDefault(), false) ||
+		(rendererState = Ready, false);
+}
+
+void DirectRenderer::finalize() noexcept {
+	// Logger.warn(L"Renderer terminating");
+	rendererState |= Terminating;
+	while (isRendering()) _mm_pause();
+	if (commandQueue) for (DirectFrame& frame : frames) frame.awaitFrame();
+	else Logger.error(L"Command queue not available.");
+	finalizeFrames();
+	finalizePipelineState();
+	finalizeRootSignature();
+	finalizeShader();
+	finalizeFence();
+	finalizeHeap();
+	finalizeSwapChain();
+	finalizeCommandQueue();
+	finalizeDevice();
+	finalizeFactory();
+	debugDefault();
+}
+
+void DirectRenderer::debugDefault() noexcept {
+	HRESULT hr = 0;
+	ComPtr<ID3D12InfoQueue> infoQueue;
+	if (!device);
+	else if (FAILED(device.As(&infoQueue))) Logger.error(L"device as infoQueue failed");
+	else if (const UINT64 messageCount = infoQueue->GetNumStoredMessages()) {
+		for (UINT64 i = 0; i < messageCount; i++) {
+			SIZE_T messageLength = 0; // 获取消息大小
+			hr = infoQueue->GetMessageW(i, nullptr, &messageLength); // 第一次调用获取长度
+			if (FAILED(hr)) {
+				Logger.error(L"Failed to get message length");
+				break;
+			}
+			D3D12_MESSAGE* message = static_cast<D3D12_MESSAGE*>(malloc(messageLength)); // 分配内存并读取消息
+			hr = infoQueue->GetMessageW(i, message, &messageLength);
+			if (FAILED(hr)) Logger.error(L"Failed to get message content");
+			using logger = PublicLogger& (PublicLogger::*)(RenderableString&& msg) noexcept;
+			static constexpr logger members[] = {
+				&PublicLogger::error,
+				&PublicLogger::error,
+				&PublicLogger::warn,
+				&PublicLogger::info,
+				&PublicLogger::log
+			};
+			(Logger.*members[message->Severity])(L"[D3D12] " + atow(message->pDescription)); // 输出消息内容（示例输出到控制台）
+			free(message);
+		}
+		infoQueue->ClearStoredMessages(); // 清空消息队列（避免重复处理）
+	}
+	else Logger.debug(L"No dx12 debug info.");
+
+	ComPtr<IDXGIDebug1> dxgiDebug;
+	if (FAILED(DXGIGetDebugInterface1(0, IID_PPV_ARGS(&dxgiDebug)))) Logger.of(L"Failed to get debug interface").warn();
+	else {
+		// DXGI_DEBUG_RLO_SUMMARY: 输出摘要信息
+		// DXGI_DEBUG_RLO_DETAIL: 输出详细信息
+		// DXGI_DEBUG_RLO_IGNORE_INTERNAL: 忽略内部引用（非常重要，避免误报）
+		hr = dxgiDebug->ReportLiveObjects(DXGI_DEBUG_ALL, static_cast<DXGI_DEBUG_RLO_FLAGS>(DXGI_DEBUG_RLO_SUMMARY | DXGI_DEBUG_RLO_DETAIL | DXGI_DEBUG_RLO_IGNORE_INTERNAL));
+		if (FAILED(hr)) Logger.of(L"Failed to report live objects. Error: ", hr).warn();
+		else Logger.of(L"Successfully reported live objects.").debug();
+	}
+}
+
+void DirectRenderer::debugCustom() noexcept {
+	Logger.of(L"fenceValue = ", fenceValue).debug();
+	Logger.of(L"rtvDescriptorSize = ", rtvDescriptorSize).debug();
+	Logger.of(L"swapFrameCount = ", swapFrameCount).debug();
+	Logger.of(L"frameIndex = ", currentFrame).debug();
+	Logger.of(L"size = ", getWidth(), L", ", getHeight()).debug();
+	Logger.of(L"factory @ ", ptrtow(factory.Get())).debug();
+	Logger.of(L"device @ ", ptrtow(device.Get())).debug();
+	Logger.of(L"rootSignature @ ", ptrtow(rootSignature.Get())).debug();
+	Logger.of(L"coloredPipelineState @ ", ptrtow(coloredPipelineState.Get())).debug();
+	Logger.of(L"texturePipelineState @ ", ptrtow(texturePipelineState.Get())).debug();
+	Logger.of(L"textureBuffer @ ", ptrtow(textureBuffer.Get())).debug();
+	Logger.of(L"coloredVertexShader @ ", ptrtow(coloredVertexShader.Get())).debug();
+	Logger.of(L"coloredPixelShader @ ", ptrtow(coloredPixelShader.Get())).debug();
+	Logger.of(L"textureVertexShader @ ", ptrtow(textureVertexShader.Get())).debug();
+	Logger.of(L"texturePixelShader @ ", ptrtow(texturePixelShader.Get())).debug();
+	Logger.of(L"rtvHeap @ ", ptrtow(rtvHeap.Get())).debug();
+	Logger.of(L"commandQueue @ ", ptrtow(commandQueue.Get())).debug();
+	Logger.of(L"swapChain @ ", ptrtow(swapChain.Get())).debug();
+	Logger.of(L"fence @ ", ptrtow(fence.Get())).debug();
+	Logger.of(L"viewport = W:", viewport.TopLeftX, L'+', viewport.Width, L", H:", viewport.TopLeftY, L'+', viewport.Height, L", D:", viewport.MinDepth, L'~', viewport.MaxDepth).debug();
+	// scissorRect
+	Logger.of(L"fenceEvent @ ", ptrtow(fenceEvent)).debug();
+	for (unsigned int i = 0; i < frames.size(); ++i) frames[i].debugCustom(i);
+}
+
+void DirectRenderer::declareThread() noexcept(false) {
+	if (threadUseState) throw ThreadInterferenceException((std::wostringstream() << L"Thread has been declared by id: " << idThread).str());
+	threadUseState = Declared;
+	idThread = std::this_thread::get_id();
+}
+
+void DirectRenderer::assertThread() const noexcept(false) {
+	if (!threadUseState) throw ThreadInterferenceException((std::wostringstream() << L"Thread is not declared").str());
+	if (std::this_thread::get_id() != idThread) throw ThreadInterferenceException((std::wostringstream() << L"Thread id should be " << idThread).str());
+}
+
+String DirectRenderer::getError(const HRESULT hresult) noexcept {
+	const std::map<long, String>::const_iterator iter = errors.find(hresult);
+	if (iter == errors.cend()) return qwtowb16(hresult, 8);
+	return iter->second;
+}
+
+void DirectRenderer::begin() {
+	rendererState |= Rendering;
+	if (!isReady()) {
+		rendererState &= ~Rendering;
+		return;
+	}
+	assertThread();
+	bool flag = false;
+	scissorRect.left = 0;
+	scissorRect.top = 0;
+	if (scissorRect.right != width) viewport.Width = static_cast<float>(scissorRect.right = width), flag = true;
+	if (scissorRect.bottom != height) viewport.Height = static_cast<float>(scissorRect.bottom = height), flag = true;
+	if (flag) builtinResize();
+	switchNextFrame().begin();
+}
+
+void DirectRenderer::end() {
+	if (isRendering()) {
+		assertThread();
+		frames[currentFrame].end();
+	}
+	rendererState &= ~Rendering;
+}
+
+void DirectRenderer::uploadTexture(Texture&) { throw NotImplementedException(L"" __FUNCSIG__); }
+void DirectRenderer::drawTexture(const DirectTextureContext&) { throw NotImplementedException(L"" __FUNCSIG__); }
+
+void DirectRenderer::drawColor(ColoredSet&& set) noexcept(false) {
+	if (!isRendering()) return;
+	assertThread();
+	frames[currentFrame].drawColor(std::move(set));
+}
+
+void DirectRenderer::drawColor(const ColoredSet& set) noexcept(false) {
+	if (!isRendering()) return;
+	assertThread();
+	frames[currentFrame].drawColor(set);
+}
+
+inline unsigned int DirectRenderer::getWidth() const noexcept { return scissorRect.right; }
+inline unsigned int DirectRenderer::getHeight() const noexcept { return scissorRect.bottom; }
+inline unsigned int DirectRenderer::getUpdatedWidth() const noexcept { return width; }
+inline unsigned int DirectRenderer::getUpdatedHeight() const noexcept { return height; }
+inline unsigned int DirectRenderer::getBufferSizeCP() const noexcept { return 0; }
