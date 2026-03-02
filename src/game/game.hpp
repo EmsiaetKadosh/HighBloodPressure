@@ -1,7 +1,9 @@
 ﻿
 #pragma once
+
 #include "src\game\interact\interact.hpp"
 #include "src\render\render.hpp"
+#include "src\game\risk.hpp"
 
 class Game;
 
@@ -32,6 +34,7 @@ public:
 	virtual void tick() noexcept(false) = 0;
 	virtual void render() noexcept(false) = 0;
 
+	virtual GameCrashRiskManager& getRiskManager() noexcept = 0;
 	virtual InteractManager& getInteractManager() noexcept = 0;
 	virtual Renderer& getRenderer() noexcept = 0;
 	virtual Camera& getCamera() noexcept = 0;

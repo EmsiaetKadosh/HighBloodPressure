@@ -1,6 +1,6 @@
 ﻿#pragma once
 
-#include <Windows.h>
+// #include <Windows.h>
 #include "src\utils\time.hpp"
 #include "src\utils\logger.hpp"
 #include "src\game\game.hpp"
@@ -10,6 +10,7 @@ inline const String ApplicationName = L"High Blood Pressure";
 
 #define DECL(className, varName) inline className& varName = Details::get##className();
 DECL(TimeManager, timer);
-DECL(PublicLogger, Logger);
+DECL(LoggerRouter, MainLoggerRouter);
+inline DomainLogger Logger = MainLoggerRouter.ofDomain(L"Main");
 DECL(Game, game);
 #undef DECL

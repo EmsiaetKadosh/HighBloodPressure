@@ -45,6 +45,7 @@ Checks: >
   -llvm-include-order,
   -llvm-namespace-comment,
   -llvmlibc-*,
+  -misc-const-correctness,
   -misc-include-cleaner,
   -misc-misplaced-const,
   -misc-unused-parameters,

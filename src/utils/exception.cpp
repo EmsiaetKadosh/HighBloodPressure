@@ -26,8 +26,8 @@ String stacktraceString(const std::stacktrace& stacktrace, unsigned int maxCount
 	std::wstringstream ss;
 	ss << L"Stacktrace:";
 	for (const auto& entry : stacktrace) {
-		ss << L"\n        Calling " << atow(entry.description().c_str());
-		if (const std::string str = entry.source_file(); !str.empty()) ss << L" @ " << atow(entry.source_file().c_str()) << L":" << entry.source_line();
+		ss << L"\n        Calling " << u8to16w_nothrow(entry.description());
+		if (const std::string str = entry.source_file(); !str.empty()) ss << L" @ " << u8to16w_nothrow(entry.source_file()) << L":" << entry.source_line();
 		if (!--maxCount) break;
 	}
 	return ss.str();
@@ -38,8 +38,8 @@ RenderableString stacktraceStringRenderable(const std::stacktrace& stacktrace, u
 	std::wstringstream ss;
 	ss << L"\\#ffee0000Stacktrace:";
 	for (const auto& entry : stacktrace) {
-		ss << L"\n\\#ffeeeeee        Calling \\#ffdcdcaa" << atow(entry.description().c_str());
-		if (const std::string str = entry.source_file(); !str.empty()) ss << L" \\#ffaaaaaa@\\#88bbee " << atow(entry.source_file().c_str()) << L"\\#ffaaaaaa:\\#ffb4cda8" << entry.source_line();
+		ss << L"\n\\#ffeeeeee        Calling \\#ffdcdcaa" << u8to16w_nothrow(entry.description());
+		if (const std::string str = entry.source_file(); !str.empty()) ss << L" \\#ffaaaaaa@\\#88bbee " << u8to16w_nothrow(entry.source_file()) << L"\\#ffaaaaaa:\\#ffb4cda8" << entry.source_line();
 		if (!--maxCount) break;
 	}
 	return ss.str();

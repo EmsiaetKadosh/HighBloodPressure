@@ -41,15 +41,11 @@ public:
 	Renderer(DirectRenderer* renderer) noexcept : renderer(renderer) {}
 	~Renderer() = default;
 
-	bool initialize(HWND hwnd) const noexcept;
-	void finalize() const noexcept;
 	void debugDefault() const noexcept;
 	void debugCustom() const noexcept;
 	void assertThread() const noexcept(false);
-	String getError(HRESULT hresult) const noexcept;
 	void setViewport(int width, int height) const noexcept;
 
-	void uploadTexture(Texture&) const;
 	void drawTexture(const DirectTextureContext& context) const;
 	void drawColor(ColoredSet&&) const noexcept(false);
 	void drawColor(const ColoredSet&) const noexcept(false);

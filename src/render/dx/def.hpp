@@ -5,6 +5,14 @@
 #include <sstream>
 #include "src\utils\chars.hpp"
 
+enum class DirectResourceBufferType {
+	Null,
+	Temporary,
+	Append,
+	Preload,
+	Constant
+};
+
 struct TextureVertex {
 	float position[3]; // 位置 (R32G32B32_FLOAT)
 	unsigned int color; // 颜色 (R8G8B8A8_UNORM，需手动归一化)
@@ -12,7 +20,7 @@ struct TextureVertex {
 	short normal[3]; // 法线 (R16G16B16_SNORM，光照时使用)
 	unsigned short index = 0; // 纹理索引！
 
-	[[nodiscard]] String toString() const noexcept {
+	[[nodiscard]] String toString() const {
 		std::wostringstream str;
 		str <<
 			L"  position: (" << position[0] << L", " << position[1] << L", " << position[2] << L")\n"
@@ -142,7 +150,7 @@ public:
 		return *this;
 	}
 
-	ColoredSetBuilder& print(std::wostringstream& str) noexcept {
+	ColoredSetBuilder& print(std::wostringstream& str) {
 		str << L"ColoredSetBuilder:";
 		for (size_t i = 0; i < set.vertices.size(); ++i) {
 			auto& [position, color] = set.vertices[i];
@@ -158,40 +166,49 @@ public:
 	}
 };
 
+/**
+ * @brief 纹理索引。指示纹理被存放在上传缓冲区的uv偏移、索引。
+ * 此类无需外部使用
+ */
 class DirectTextureIndex {
-	friend class DirectTexture;
-	friend class DirectTextureContext;
-	friend struct DirectFrame;
-	friend struct DirectTextureResource;
+	friend class DirectTextureDispatcher;
 
-	enum BufferType : unsigned char {
-		Invalid = 0,
-		ConstantBuffer = 1,
-		PreloadBuffer = 2,
-		AppendBuffer = 3,
-		TemporaryBuffer = 4
-	} bufferType = Invalid;
-
-	unsigned short bufferIndex = 0;
-	unsigned char spriteIndex = 0; // If single texture or non-sprite index, this is ignored
-
-	DirectTextureIndex(decltype(-1)) : DirectTextureIndex() {}
-	DirectTextureIndex(const BufferType type, const unsigned short index) : bufferType(type), bufferIndex(index) {}
+	unsigned int index = 0; // 内置拼合纹理索引
+	unsigned int xGrid = 0, yGrid = 0; // 网格起始索引
+	unsigned int xGridSize = 0, yGridSize = 0; // 网格尺寸索引
+	float xSample = 0.0f, ySample = 0.0f; // 采样起始uv
+	float xSampleSize = 0.0f, ySampleSize = 0.0f; // 采样尺寸uv
+	DirectResourceBufferType buffer = DirectResourceBufferType::Null;
+	[[nodiscard]] bool isNull() const noexcept { return buffer == DirectResourceBufferType::Null; }
+	[[nodiscard]] operator bool() const noexcept { return !isNull(); }
+	[[nodiscard]] bool operator!() const noexcept { return isNull(); }
 
 public:
-	DirectTextureIndex() = default;
-	[[nodiscard]] operator bool() const noexcept { return bufferType != Invalid; }
-	[[nodiscard]] bool operator!() const noexcept { return bufferType == Invalid; }
+	static const DirectTextureIndex& ofNull() noexcept {
+		static DirectTextureIndex null;
+		return null;
+	}
 };
 
+class DirectTextureEntry {
+	friend class DirectTextureManager;
+	friend class DirectTextureContext;
+	class DirectTextureCarrier* carrier = nullptr;
+
+	DirectTextureCarrier* replace(DirectTextureCarrier* newCarrier) noexcept {
+		DirectTextureCarrier* const ret = carrier;
+		carrier = newCarrier;
+		return ret;
+	}
+};
 
 class DirectTextureContext {
-	DirectTextureIndex index;
+	DirectTextureCarrier* carrier = nullptr;
 
 public:
 	Vector<TextureVertex> vertices; // 可以自定义拉伸图形。公开成员，允许一些自由修改
 
-	DirectTextureContext& of(const DirectTextureIndex& index) noexcept { return this->index = index, *this; }
+	DirectTextureContext& of(const DirectTextureEntry& entry) noexcept { return this->carrier = entry.carrier, *this; }
 	DirectTextureContext& atLeftTop(const Vector3D& v, const unsigned int color) noexcept { return vertices.emplace_back(TextureVertex { .position = { static_cast<float>(v.getX()), static_cast<float>(v.getY()), static_cast<float>(v.getZ()) }, .color = color, .uv = { 0.0f, 0.0f }, .normal = { 0, 0, 0 } }), *this; }
 	DirectTextureContext& atLeftBottom(const Vector3D& v, const unsigned int color) noexcept { return vertices.emplace_back(TextureVertex { .position = { static_cast<float>(v.getX()), static_cast<float>(v.getY()), static_cast<float>(v.getZ()) }, .color = color, .uv = { 0.0f, 1.0f }, .normal = { 0, 0, 0 } }), *this; }
 	DirectTextureContext& atRightTop(const Vector3D& v, const unsigned int color) noexcept { return vertices.emplace_back(TextureVertex { .position = { static_cast<float>(v.getX()), static_cast<float>(v.getY()), static_cast<float>(v.getZ()) }, .color = color, .uv = { 1.0f, 0.0f }, .normal = { 0, 0, 0 } }), *this; }

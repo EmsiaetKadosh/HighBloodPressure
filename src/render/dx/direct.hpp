@@ -1,14 +1,21 @@
 ﻿#pragma once
 
 #define HBP_DX_DEBUG true
+/**
+ * 宏HBP_DX_IMPL指定是否在后续的文件中包含DX相关的接口文件。
+ * 如果定义HBP_DX_IMPL，则需要提供依赖DX接口文件的所有的定义（和必要实现）
+ * 如果未定义HBP_DX_IMPL，则可以隐藏不对外暴露的依赖DX接口文件的定义，只保留声明。
+ */
+#define HBP_DX_IMPL
 
+#include <unordered_map>
 #include <thread>
 #include <directx\d3dx12.h>
 #include <dxgi1_6.h>
 #include <DirectXMath.h>
 #include <wrl.h>
-#include "src\using.hpp"
 #include "src\utils\math.hpp"
+#include "src\utils\logger.hpp"
 #include "def.hpp"
 #include "texture.hpp"
 
@@ -38,7 +45,7 @@ public:
 	[[nodiscard]] Vector3D getDirection() const noexcept { return direction; }
 	[[nodiscard]] Vector3D getPosition() const noexcept { return position; }
 	void setDirection(const Vector3D& d) noexcept { changed = true, direction = d; }
-	void setDirection(const double pitch, const double yaw) noexcept { changed = true, this->pitch = pitch, this->yaw = yaw, calculatePitchYaw(); }
+	void setDirection(const double pitch_, const double yaw_) noexcept { changed = true, pitch = pitch_, yaw = yaw_, calculatePitchYaw(); }
 	void setDirection(const double x, const double y, const double z) noexcept { changed = true, direction.setX(x), direction.setY(y), direction.setZ(z), direction.lengthManhattan() == 0 ? direction.setX(0) : direction.normalize(); }
 	void setPosition(const Vector3D& p) noexcept { changed = true, position = p; }
 	void setPosition(const double x, const double y, const double z) noexcept { changed = true, position.setX(x), position.setY(y), position.setZ(z); }
@@ -47,12 +54,12 @@ public:
 	[[nodiscard]] double getFoV() const noexcept { return fieldOfView; }
 	[[nodiscard]] double getFarthestDistance() const noexcept { return farthestDistance; }
 	[[nodiscard]] double getNearestDistance() const noexcept { return nearestDistance; }
-	void setCenterDistance(const double distance) noexcept { changed = true, this->distance = distance; }
+	void setCenterDistance(const double dist) noexcept { changed = true, this->distance = dist; }
 	void setFoV(const double fov) noexcept { changed = true, this->fieldOfView = fov; }
 	void setFarthestDistance(const double fd) noexcept { changed = true, this->farthestDistance = fd; }
 	void setNearestDistance(const double nd) noexcept { changed = true, this->nearestDistance = nd; }
 	void calculate(double width, double height) noexcept;
-	void rotate(const double pitch, const double yaw) noexcept { changed = true, this->pitch += pitch, this->yaw += yaw, calculatePitchYaw(); }
+	void rotate(const double pitch_, const double yaw_) noexcept { changed = true, pitch += pitch_, yaw += yaw_, calculatePitchYaw(); }
 
 	void usePerspectiveProjection() noexcept { changed = true, projection = Perspective; }
 	void useOrthographicProjection() noexcept { changed = true, projection = Orthographic; }
@@ -62,56 +69,181 @@ public:
 };
 
 struct DirectResource {
-	ComPtr<ID3D12Resource> buffer = {};
-	size_t currentSize = 1;
-
-	enum Status {
+	enum class DirectResourceStatus : unsigned char {
 		Null,
 		Map,
 		Unmap
-	} status = Null;
+	};
 
-	[[nodiscard]] bool resize(DirectRenderer& renderer, unsigned long long& amount, size_t unitSize) noexcept;
-	[[nodiscard]] bool resize(DirectRenderer& renderer, size_t unitSize) noexcept;
-	[[nodiscard]] char* map(DirectRenderer& renderer) noexcept;
+	DirectRenderer& renderer;
+	ComPtr<ID3D12Resource> buffer = {};
+	size_t currentSize = 1;
+	DirectResourceStatus status = DirectResourceStatus::Null; // 1B
+
+	DirectResource(DirectRenderer& renderer) noexcept : renderer(renderer) {}
+
+	[[nodiscard]] bool resize(unsigned long long& amount, size_t unitSize) noexcept;
+	[[nodiscard]] bool resize(size_t unitSize) noexcept;
+	[[nodiscard]] char* map() noexcept;
 	void unmap() noexcept;
 	void finalize() noexcept;
 	[[nodiscard]] ID3D12Resource* getBuffer() const noexcept;
 };
 
 /**
- * 纹理资源缓冲区
+ * 纹理资源缓冲区；
+ * CB PB AB TB都是DirectTextureResource
  */
 struct DirectTextureResource {
-	using DirectTextureIndex::BufferType;
-	Vector<DirectTextureEntry> textures;
-	ComPtr<ID3D12Resource> buffer = {};
-	unsigned int unitWidth, unitHeight;
-	BufferType type;
+private:
+	friend class DirectFrame;
+	friend class DirectTextureResourceManager;
+	using DirectResourceStatus = DirectResource::DirectResourceStatus;
+	DirectRenderer& renderer;
+	ComPtr<ID3D12Resource> uploadBuffer = {}; // CPU write
+	ComPtr<ID3D12Resource> defaultBuffer = {}; // GPU only
+	char* mapAddress = nullptr;
+	size_t size = 1;
+	D3D12_PLACED_SUBRESOURCE_FOOTPRINT footprint = {};
+	UINT numRows = 0;
+	UINT64 rowPitch = 0;
+	UINT64 uploadBufferSize = 0;
+	unsigned int width = 0, height = 0;
+	/**
+	 * @brief 此变量用于提高效率。
+	 * 每次Scene中的内容发生更改时，其版本值+1。
+	 * 渲染提交时，查看DTS中的版本值与此值是否相同，不同则重新打包上传。
+	 * 参考@code DirectTextureScene::version	@endcode。
+	 */
+	unsigned int version = 0;
+	DirectResourceStatus status = DirectResourceStatus::Null;
+	[[nodiscard]] char* map() noexcept;
+	void unmap() noexcept;
+	void submit(const ComPtr<ID3D12GraphicsCommandList>& commandList) const noexcept;
 
-	enum Status : unsigned char {
-		Await,
-		Ready,
-		Uploaded
-	} status = Await;
+public:
+	DirectTextureResource(DirectRenderer& renderer) noexcept : renderer(renderer) {}
 
-	DirectTextureResource(const BufferType type, const unsigned int unitWidth, const unsigned int unitHeight) : unitWidth(unitWidth), unitHeight(unitHeight), type(type) {}
+	[[nodiscard]] bool isSuitable(const DirectTextureCarrier& carrier) const noexcept { return carrier.width <= width && carrier.height <= height; }
+	[[nodiscard]] bool isOutdated(const unsigned int v) const noexcept { return v != version; }
+	[[nodiscard]] bool resize(unsigned int singleWidth, unsigned int singleHeight, unsigned int length) noexcept;
+	void finalize() noexcept;
+	[[nodiscard]] unsigned int getSize() const noexcept { return size; }
+	[[nodiscard]] char* getMappedAddress() const noexcept { return mapAddress; }
 
 	/**
-	 * 绑定纹理到当前缓冲区
-	 * @param texture 要绑定的资源对象
-	 * @return 绑定后的index值
+	 * @brief 填充纹理的部分区域
+	 * @param index 纹理数组索引
+	 * @param x 起始X坐标
+	 * @param y 起始Y坐标
+	 * @param w 宽度
+	 * @param h 高度
+	 * @param data 像素数据（格式为0xAARRGGBB，大小为w*h）
 	 */
-	DirectTextureIndex bindTexture(DirectTextureCarrier& texture) noexcept {
-		if (!texture.isReady()) return -1;
-		if (texture.index) return texture.index;
-		if (texture.type == DirectTextureCarrier::Sprite) texture
-		return texture.getIndex();
+	bool fillRect(unsigned int index, unsigned int x, unsigned int y, unsigned int w, unsigned int h, const unsigned int* data) const noexcept;
+};
+
+class DirectTextureDispatcher {
+	friend class DirectTextureResourceManager;
+
+	enum Category : unsigned char { Unit, Special };
+
+	struct Atlas {
+		Vector<bool> grid; // 网格占用状态
+		const Category category;
+		unsigned int usedCells = 0; // 已使用分片数
+		float fillRate = 0.0f;
+
+		Atlas(const Category category, const unsigned int gridSize) : grid(gridSize * gridSize, false), category(category) {}
+	};
+
+	Vector<Atlas> atlases;
+	HashMap<DirectTextureCarrier*, DirectTextureIndex> indices = {};
+	DirectTextureResourceManager& manager;
+	DirectRenderer& renderer;
+	const DirectResourceBufferType buffer;
+
+	DirectTextureDispatcher(const DirectResourceBufferType type, DirectTextureResourceManager& manager, DirectRenderer& renderer) noexcept : manager(manager), renderer(renderer), buffer(type) {}
+	void setTrue(const unsigned int index, const unsigned int gridWidth, const unsigned int x, const unsigned y) noexcept { atlases[index].grid.at(x + y * gridWidth) = true; }
+	void setFalse(const unsigned int index, const unsigned int gridWidth, const unsigned int x, const unsigned y) noexcept { atlases[index].grid.at(x + y * gridWidth) = false; }
+
+	void setRange(const DirectTextureIndex& index, const bool value) noexcept {
+		Vector<bool>& grids = atlases[index.index].grid;
+		const unsigned int yEnd = index.yGridSize + index.yGrid;
+		for (unsigned int i = index.yGrid; i < yEnd; ++i) std::fill_n(grids.begin() + index.xGrid, index.xGridSize, value);
 	}
 
-	void upload() noexcept {}
-	[[nodiscard]] bool isFull() const noexcept { return textures.size() >= 200; }
-	[[nodiscard]] bool isSuitable(const DirectTextureCarrier& carrier) const noexcept { return carrier.width <= unitWidth && carrier.height <= unitHeight; }
+	static void updateAtlasFillRate(Atlas& atlas) noexcept;
+	void createAtlas(Category category) noexcept;
+	[[nodiscard]] Category categoryOf(const DirectTextureCarrier* carrier) const noexcept;
+	[[nodiscard]] std::pair<unsigned int, unsigned int> indexToXY(unsigned int index) const noexcept;
+	[[nodiscard]] bool isLineEmpty(Atlas& atlas, unsigned int x, unsigned int y, unsigned int width /* NonZero. 1~n */) const noexcept;
+	[[nodiscard]] bool isColumnEmpty(Atlas& atlas, unsigned int x, unsigned int y, unsigned int height /* NonZero. 1~n */) const noexcept;
+
+	[[nodiscard]] DirectTextureIndex newPrepare(const DirectTextureCarrier* carrier) const noexcept;
+	void newAdapt(const DirectTextureCarrier* carrier, DirectTextureIndex& index) noexcept;
+
+	bool fitForUnit(unsigned int indexAtlas, DirectTextureIndex& index, const DirectTextureCarrier* carrier) noexcept;
+	bool fitForSpecial(unsigned int indexAtlas, DirectTextureIndex& index, const DirectTextureCarrier* carrier) noexcept;
+
+public:
+	void update() noexcept;
+	void apply(DirectTextureResource& resource) noexcept;
+	const DirectTextureIndex& getIndex(DirectTextureCarrier* carrier) noexcept;
+};
+
+class DirectTextureResourceManager {
+	DirectTextureScene currentScene;
+	HashSet<DirectTextureCarrier*> constant;
+	DirectRenderer& renderer;
+	DirectTextureDispatcher dispatcherConstant;
+	DirectTextureDispatcher dispatcherPreload;
+	DirectTextureDispatcher dispatcherAppend;
+	DirectTextureDispatcher dispatcherTemporary;
+	unsigned int unitSize;
+	unsigned int specialSize;
+	unsigned int edgeSize;
+	unsigned int gridSize;
+	float fillThreshold = 0.7;
+	bool constantOk = false;
+
+public:
+	DirectTextureResourceManager(DirectRenderer& renderer, const unsigned int unit, const unsigned int special, DirectTextureManager* manager) noexcept :
+		currentScene(manager), renderer(renderer),
+		dispatcherConstant { DirectResourceBufferType::Constant, *this, renderer },
+		dispatcherPreload { DirectResourceBufferType::Preload, *this, renderer },
+		dispatcherAppend { DirectResourceBufferType::Append, *this, renderer },
+		dispatcherTemporary { DirectResourceBufferType::Temporary, *this, renderer },
+		unitSize(unit), specialSize(special), edgeSize(specialSize % unitSize), gridSize(specialSize / unitSize) {}
+
+	void prepareConstant(DirectTextureResource& buffer) noexcept;
+	void preparePreload(DirectTextureResource& buffer) noexcept;
+	/** @returns true - 需要重新上传 */
+	[[nodiscard]] bool prepareAppend(DirectTextureResource& buffer) noexcept;
+	/** @returns true - 需要重新上传 */
+	[[nodiscard]] bool prepareTemporary(DirectTextureResource& buffer) noexcept;
+	/**
+	 * @brief 向ConstantBuffer填入纹理
+	 * @param carrier 要填入的纹理
+	 * @return true - 成功
+	 */
+	bool addConstant(DirectTextureCarrier* const carrier) noexcept {
+		if (constantOk) return false;
+		if (constant.contains(carrier)) return true;
+		constant.emplace(carrier);
+		return true;
+	}
+
+	DirectTextureScene& addPreload(DirectTextureCarrier* const carrier) noexcept { return currentScene.addPreload(carrier); }
+	DirectTextureScene& addAppend(DirectTextureCarrier* const carrier) noexcept { return currentScene.addAppend(carrier); }
+	DirectTextureScene& addTemporary(DirectTextureCarrier* const carrier) noexcept { return currentScene.addTemporary(carrier); }
+	void switchScene(DirectTextureScene&& newScene) noexcept { currentScene = std::move(newScene); }
+	[[nodiscard]] DirectTextureScene& getCurrentScene() noexcept { return currentScene; }
+	[[nodiscard]] unsigned int getUnitSize() const noexcept { return unitSize; }
+	[[nodiscard]] unsigned int getSpecialSize() const noexcept { return specialSize; }
+	[[nodiscard]] float getFillThreshold() const noexcept { return fillThreshold; }
+	[[nodiscard]] unsigned int getGridSize() const noexcept { return gridSize; }
+	[[nodiscard]] unsigned int getEdgeSize() const noexcept { return edgeSize; }
 };
 
 struct DirectFrame {
@@ -125,6 +257,8 @@ struct DirectFrame {
 	DirectResource coloredVertex;
 	DirectResource textureVertex;
 	DirectResource coloredIndex;
+	DirectTextureResource textureAppend;
+	DirectTextureResource textureTemporary;
 	ComPtr<ID3D12Resource> renderTargetView = nullptr;
 	ComPtr<ID3D12Resource> depthStencilView = nullptr;
 	unsigned long long thisSignal = 0;
@@ -144,7 +278,11 @@ struct DirectFrame {
 		Await,
 	} state = Await;
 
-	DirectFrame(DirectRenderer& renderer) : renderer(renderer) {}
+	DirectFrame(DirectRenderer& renderer) noexcept :
+		renderer(renderer), constants(renderer),
+		coloredVertex(renderer), textureVertex(renderer), coloredIndex(renderer),
+		textureAppend(renderer), textureTemporary(renderer) {}
+
 	bool reassignColoredBuffer(size_t size) noexcept;
 	bool reassignTextureBuffer(size_t size) noexcept;
 	bool reassignColoredIndexBuffer(size_t size) noexcept;
@@ -155,30 +293,30 @@ struct DirectFrame {
 	void debugCustom(unsigned int index) noexcept;
 
 	void begin() noexcept(false);
-	bool submitVertices() noexcept;
+	bool submitColoredVertices() noexcept;
+	bool submitTextureVertices() noexcept;
+	bool submitTextures() noexcept;
 	void end();
 	void assertStatus(State, bool strict = false) const noexcept(false);
 
 	void drawColor(ColoredSet&&) noexcept(false);
 	void drawColor(const ColoredSet&) noexcept(false);
-
-	[[nodiscard]] unsigned int getBufferSizeAT() const noexcept;
 };
 
 class DirectRenderer {
 	friend struct DirectFrame;
 	friend struct DirectResource;
-	friend struct DirectConstantResource;
-	DirectTextureManager textureManager;
-	DirectCamera camera;
+	friend struct DirectTextureResource;
+	DomainLogger rendererLogger;
+	DirectCamera camera = {};
 
-	std::thread::id idThread;
 	unsigned long long fenceValue = 0;
 	unsigned int rtvDescriptorSize = 0;
 	unsigned int dsvDescriptorSize = 0;
 	unsigned int swapFrameCount = 2;
 	unsigned int currentFrame = swapFrameCount - 1;
 	int width = 1920, height = 1080;
+	std::thread::id idThread; // 4B
 
 	enum ThreadUseState : unsigned char {
 		NotDeclared = 0,
@@ -192,24 +330,18 @@ class DirectRenderer {
 		Terminating = 128
 	};
 
-	enum SpritePreset : unsigned char {
-		S256x256,
-		S512x512,
-		S1024x1024,
-		S2048x1024,
-		S4096x2048,
-	};
-
-	SpritePreset spritePreset = S256x256;
-	ThreadUseState threadUseState = NotDeclared;
-	unsigned char rendererState = Uninitialized;
+	ThreadUseState threadUseState = NotDeclared; // 1B
+	unsigned char rendererState = Uninitialized; // 1B
+	DirectTextureManager textureManager;
+	DirectTextureResourceManager resourceManager;
 
 	ComPtr<IDXGIFactory6> factory = nullptr;
 	ComPtr<ID3D12Device6> device = nullptr;
 	ComPtr<ID3D12RootSignature> rootSignature = nullptr;
 	ComPtr<ID3D12PipelineState> coloredPipelineState = nullptr;
 	ComPtr<ID3D12PipelineState> texturePipelineState = nullptr;
-	ComPtr<ID3D12Resource> textureBuffer = nullptr;
+	DirectTextureResource textureConstant = *this;
+	DirectTextureResource texturePreload = *this;
 	ComPtr<ID3DBlob> coloredVertexShader = nullptr;
 	ComPtr<ID3DBlob> coloredPixelShader = nullptr;
 	ComPtr<ID3DBlob> textureVertexShader = nullptr;
@@ -254,7 +386,7 @@ class DirectRenderer {
 	void finalizeFactory() noexcept;
 
 	unsigned long long requestSignal() noexcept;
-	void awaitSignal(unsigned long long fenceValue) noexcept;
+	void awaitSignal(unsigned long long awaitingFenceValue) noexcept;
 	DirectFrame& switchNextFrame() noexcept;
 	[[nodiscard]] bool isTerminating() const noexcept;
 	[[nodiscard]] bool isReady() const noexcept;
@@ -263,22 +395,35 @@ class DirectRenderer {
 
 public:
 	/**
+	 * @attention 如果遇到common尺寸的纹理，则会放在一起拼成spec尺寸的sprite；否则，尺寸不同的纹理会作为单独的spec尺寸的纹理被上传。
+	 * @brief 创建纹理管理器
+	 * @param common 常用纹理的尺寸
+	 * @param spec 所有纹理中的最大尺寸
+	 */
+	explicit DirectRenderer(unsigned int common = 16, unsigned int spec = 1024) noexcept;
+
+	/**
 	 * @return true - initialization failed
 	 */
 	bool initialize(HWND hwnd) noexcept;
 	void finalize() noexcept;
+	void awaitAllFrames() noexcept;
 	void debugDefault() noexcept;
 	void debugCustom() noexcept;
 	void declareThread() noexcept(false);
 	void assertThread() const noexcept(false);
+	[[nodiscard]] bool checkThread() const noexcept(false);
 	String getError(HRESULT hresult) noexcept;
+	DomainLogger& getLogger() noexcept { return rendererLogger; }
 	DirectCamera& getCamera() noexcept { return camera; }
-	void setViewport(const int width, const int height) noexcept { this->width = width, this->height = height; }
+	void setViewport(const int w, const int h) noexcept { width = w, height = h; }
 
 	void begin();
 	void end();
 
-	void uploadTexture(Texture&);
+	void changeScene(const DirectTextureScene& scene) noexcept;
+	void changeScene(DirectTextureScene&& scene) noexcept;
+
 	void drawTexture(const DirectTextureContext&);
 	void drawColor(ColoredSet&&) noexcept(false);
 	void drawColor(const ColoredSet&) noexcept(false);
@@ -287,6 +432,4 @@ public:
 	[[nodiscard]] unsigned int getHeight() const noexcept;
 	[[nodiscard]] unsigned int getUpdatedWidth() const noexcept;
 	[[nodiscard]] unsigned int getUpdatedHeight() const noexcept;
-
-	[[nodiscard]] unsigned int getBufferSizeCP() const noexcept;
 };

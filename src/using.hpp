@@ -1,13 +1,10 @@
 ﻿
 // ReSharper disable once CppMissingIncludeGuard
 
-#include <Windows.h>
-
 #ifndef HBP_USING
 #define HBP_USING
 
 using wchar = wchar_t;
-
 using FontStyle = int;
 using FontID = unsigned short;
 
@@ -17,6 +14,10 @@ using FontID = unsigned short;
 #define HBP_STRING
 using String = std::wstring;
 #endif
+#if defined(_STRING_VIEW_) && !defined(HBP_STRING_VIEW)
+#define HBP_STRING_VIEW
+using StringView = std::wstring_view;
+#endif
 
 #if defined(_VECTOR_) && !defined(HBP_VECTOR)
 #define HBP_VECTOR
@@ -25,13 +26,12 @@ template <typename T, typename Alloc = std::allocator<T>> using Vector = std::ve
 
 #if defined(_DEQUE_) && !defined(HBP_DEQUE)
 #define HBP_DEQUE
-template<typename T, typename Alloc = std::allocator<T>>
-using Deque = std::deque<T, Alloc>;
+template <typename T, typename Alloc = std::allocator<T>> using Deque = std::deque<T, Alloc>;
 #endif
 
 #if defined(_LIST_) && !defined(HBP_LIST)
 #define HBP_LIST
-template<typename T, typename Alloc = std::allocator<T>> using List = std::list<T, Alloc>;
+template <typename T, typename Alloc = std::allocator<T>> using List = std::list<T, Alloc>;
 #endif
 
 #if defined(_MAP_) && !defined(HBP_MAP)
@@ -42,6 +42,16 @@ template <typename K, typename V, typename Compare = std::less<K>, typename Allo
 #if defined(_SET_) && !defined(HBP_SET)
 #define HBP_SET
 template <typename K, typename Compare = std::less<K>, typename Alloc = std::allocator<K>> using Set = std::set<K, Compare, Alloc>;
+#endif
+
+#if defined(_UNORDERED_MAP_) && !defined(HBP_UNORDERED_MAP)
+#define HBP_UNORDERED_MAP
+template <typename K, typename V, typename Hasher = std::hash<K>, typename Eq = std::equal_to<K>, typename Alloc = std::allocator<std::pair<const K, V>>> using HashMap = std::unordered_map<K, V, Hasher, Eq, Alloc>;
+#endif
+
+#if defined(_UNORDERED_SET_) && !defined(HBP_UNORDERED_SET)
+#define HBP_UNORDERED_SET
+template <typename K, typename Hasher = std::hash<K>, typename Eq = std::equal_to<K>, typename Alloc = std::allocator<K>> using HashSet = std::unordered_set<K, Hasher, Eq, Alloc>;
 #endif
 
 #if defined(_WRL_H_) && !defined(HBP_WRL_H)
@@ -61,9 +71,14 @@ using Thread = std::thread;
 
 #if defined(_CHRONO_) && !defined(HBP_CHRONO)
 #define HBP_CHRONO
-using Chronono = std::chrono::high_resolution_clock;
+using Chrono = std::chrono::high_resolution_clock;
 using SystemClock = std::chrono::system_clock;
 using Clock = std::chrono::steady_clock;
 using TimePoint = Clock::time_point;
 using TimePeriod = Clock::duration;
+#endif
+
+#if defined(_OPTIONAL_) && !defined(HBP_OPTIONAL)
+#define HBP_OPTIONAL
+template <typename T> using Optional = std::optional<T>;
 #endif

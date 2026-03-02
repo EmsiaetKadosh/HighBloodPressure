@@ -1,6 +1,7 @@
 ﻿
 #include <Windows.h>
 #include "src\render\string.hpp"
+#include "src\main.hpp"
 
 void StringConfig::reset() noexcept {
 	idFont = 0;
@@ -29,7 +30,7 @@ StringConfig StringConfig::copy() const noexcept {
 	return ret;
 }
 
-String StringConfig::toString() const noexcept {
+String StringConfig::toString() const {
 	String ret;
 	ret.append(L"#");
 	ret.append(isDefaultColor() ? L"~~" : qwtowb16(color, 8));
@@ -47,14 +48,28 @@ String StringConfig::toString() const noexcept {
 	return ret;
 }
 
-String StringConfig::getString() const noexcept { return text; }
+const String& StringConfig::getString() const noexcept { return text; }
 
-RenderableString::RenderableString(const wchar* const string, const size_t length) {
-	if (length == -1) parseAppend(string);
-	else parseAppend(string, length);
+RenderableString::RenderableString(const wchar* const string, const size_t length) noexcept {
+	try {
+		if (length == static_cast<size_t>(-1)) parseAppend(string);
+		else parseAppend(string, length);
+	}
+	catch (std::bad_alloc&) { game.getRiskManager().report(); }
+	catch (std::exception&) { MainLoggerRouter.outputDirect(L"Cannot generate RenderableString: @ RenderableString::RenderableString"); }
 }
 
-String RenderableString::toString() const noexcept {
+RenderableString::RenderableString(String&& string, nullptr_t) noexcept {
+	try {
+		configs.reserve(1);
+		configs.emplace_back();
+		configs.back().text = std::move(string);
+	}
+	catch (std::bad_alloc&) { game.getRiskManager().report(); }
+	catch (std::exception& exception) {}
+}
+
+String RenderableString::toString() const {
 	String ret;
 	for (const auto& config : configs) {
 		ret.append(config.toString());
@@ -63,9 +78,10 @@ String RenderableString::toString() const noexcept {
 	return ret;
 }
 
-String RenderableString::getString() const noexcept {
+String RenderableString::getString() const {
 	String ret;
-	for (const auto& config : configs) ret.append(config.getString());
+	try { for (const auto& config : configs) ret.append(config.getString()); }
+	catch (...) { MainLoggerRouter.outputDirect(L"Cannot generate String: @ RenderableString::getString"); }
 	return ret;
 }
 
@@ -112,7 +128,7 @@ RenderableString& RenderableString::append(const RenderableString& other) {
 	return *this;
 }
 
-void RenderableString::parseAppend(const wchar* string) noexcept {
+void RenderableString::parseAppend(const wchar* string) {
 	StringConfig config;
 	if (!configs.empty()) {
 		config = configs.back();
@@ -201,7 +217,7 @@ end:
 	configs.push_back(std::move(config));
 }
 
-void RenderableString::parseAppend(const wchar* string, const size_t length) noexcept {
+void RenderableString::parseAppend(const wchar* string, const size_t length) {
 	StringConfig config = StringConfig();
 	if (!configs.empty()) {
 		config = configs.back();

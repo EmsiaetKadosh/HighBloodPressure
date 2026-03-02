@@ -1,7 +1,6 @@
 ﻿
 #include "src\render\render.hpp"
 #include "src\render\dx\direct.hpp"
-#include "src\main.hpp"
 
 Vector3D Camera::getDirection() const noexcept { return camera->getDirection(); }
 Vector3D Camera::getPosition() const noexcept { return camera->getPosition(); }
@@ -25,14 +24,10 @@ void Camera::usePerspectiveProjection() const noexcept { camera->usePerspectiveP
 void Camera::useOrthographicProjection() const noexcept { camera->useOrthographicProjection(); }
 void Camera::useProjectionSwitch() const noexcept { camera->useProjectionSwitch(); }
 
-bool Renderer::initialize(const HWND hwnd) const noexcept { return renderer->initialize(hwnd); }
-void Renderer::finalize() const noexcept { renderer->finalize(); }
 void Renderer::debugDefault() const noexcept { renderer->debugDefault(); }
 void Renderer::debugCustom() const noexcept { renderer->debugCustom(); }
 void Renderer::assertThread() const noexcept(false) { renderer->assertThread(); }
-String Renderer::getError(const HRESULT hresult) const noexcept { return renderer->getError(hresult); }
 void Renderer::setViewport(const int width, const int height) const noexcept { return renderer->setViewport(width, height); }
-void Renderer::uploadTexture(Texture& texture) const { renderer->uploadTexture(texture); }
 void Renderer::drawTexture(const DirectTextureContext& context) const { renderer->drawTexture(context); }
 void Renderer::drawColor(ColoredSet&& set) const noexcept(false) { renderer->drawColor(set); }
 void Renderer::drawColor(const ColoredSet& set) const noexcept(false) { renderer->drawColor(set); }

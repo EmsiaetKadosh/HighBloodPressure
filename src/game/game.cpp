@@ -8,6 +8,7 @@
 #include "src\utils\time.hpp"
 
 class GameImpl final : public Game {
+	GameCrashRiskManager riskManager;
 	InteractManager interactManager;
 	DirectRenderer renderer;
 	Renderer renderInterface { &renderer };
@@ -22,19 +23,19 @@ class GameImpl final : public Game {
 
 	static void GameThread() {
 		Logger.of(L"GameThread started. id: ", std::this_thread::get_id()).info();
-		GameImpl& game = static_cast<GameImpl&>(::game); // NOLINT(*-pro-type-static-cast-downcast)
-		try { while (game.isRunning) game.tick(); }
+		GameImpl& impl = static_cast<GameImpl&>(game); // NOLINT(*-pro-type-static-cast-downcast)
+		try { while (impl.isRunning) impl.tick(); }
 		catch (Exception& e) { e.printStacktrace().crash(L"Unhandled GameThread exception"); }
 		Logger.warn(L"GameThread ended");
-		game.isRunning = false;
+		impl.isRunning = false;
 	}
 
 	static void RenderThread() {
 		Logger.of(L"RenderThread started. id: ", std::this_thread::get_id()).info();
-		GameImpl& game = static_cast<GameImpl&>(::game); // NOLINT(*-pro-type-static-cast-downcast)
+		GameImpl& impl = static_cast<GameImpl&>(game); // NOLINT(*-pro-type-static-cast-downcast)
 		try {
-			game.renderer.declareThread();
-			while (game.isRunning) game.render();
+			impl.renderer.declareThread();
+			while (impl.isRunning) impl.render();
 		}
 		catch (Exception& e) { e.printStacktrace().crash(L"Unhandled RenderThread exception"); }
 		Logger.warn(L"RenderThread ended");
@@ -166,6 +167,7 @@ public:
 		}
 	}
 
+	GameCrashRiskManager& getRiskManager() noexcept override { return riskManager; }
 	InteractManager& getInteractManager() noexcept override { return interactManager; }
 	Renderer& getRenderer() noexcept override { return renderInterface; }
 	Camera& getCamera() noexcept override { return cameraInterface; }

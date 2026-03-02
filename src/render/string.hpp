@@ -40,8 +40,8 @@ struct StringConfig {
 
 	[[nodiscard]] StringConfig copyConfig() const noexcept;
 	[[nodiscard]] StringConfig copy() const noexcept;
-	[[nodiscard]] String toString() const noexcept;
-	[[nodiscard]] String getString() const noexcept;
+	[[nodiscard]] String toString() const;
+	[[nodiscard]] const String& getString() const noexcept;
 };
 
 struct RenderConfig {
@@ -56,15 +56,17 @@ class RenderableString {
 	using ConstIterator = Vector<StringConfig>::const_iterator;
 
 public:
-	RenderableString(const String& string): RenderableString(string.c_str(), string.length()) {}
-	RenderableString(String&& string) : RenderableString(string.c_str(), string.length()) {}
-	RenderableString(const wchar* string, size_t length = static_cast<size_t>(-1));
+	RenderableString() noexcept = default;
+	RenderableString(const String& string) noexcept : RenderableString(string.c_str(), string.length()) {}
+	RenderableString(String&& string) noexcept : RenderableString(string.c_str(), string.length()) {}
+	RenderableString(const wchar* string, size_t length = static_cast<size_t>(-1)) noexcept;
+	RenderableString(String&& string, nullptr_t) noexcept; // 采用raw字符串而不解析
 	RenderableString(const RenderableString&) = default;
-	RenderableString(RenderableString&&) = default;
-	~RenderableString() = default;
+	RenderableString(RenderableString&&) noexcept = default;
+	~RenderableString() noexcept = default;
 
-	[[nodiscard]] String toString() const noexcept;
-	[[nodiscard]] String getString() const noexcept;
+	[[nodiscard]] String toString() const;
+	[[nodiscard]] String getString() const;
 
 	RenderableString& append(const RenderableString& other);
 	RenderableString& append(const String& other);
@@ -73,6 +75,6 @@ public:
 	[[nodiscard]] int getWidth(RenderConfig* renderConfigs, FontID defaultID) const noexcept;
 
 private:
-	void parseAppend(const wchar* string) noexcept;
-	void parseAppend(const wchar* string, size_t length) noexcept;
+	void parseAppend(const wchar* string);
+	void parseAppend(const wchar* string, size_t length);
 };
