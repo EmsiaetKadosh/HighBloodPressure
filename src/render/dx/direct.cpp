@@ -30,16 +30,16 @@
 #define DiscardReturn(r) (r)
 
 static constexpr D3D12_INPUT_ELEMENT_DESC TEXTURE_LAYOUT[] = {
-	{"POSITION", 0, DXGI_FORMAT_R32G32B32_FLOAT, 0, 0, D3D12_INPUT_CLASSIFICATION_PER_VERTEX_DATA, 0},
-	{"COLOR", 0, DXGI_FORMAT_R32_UINT, 0, 12, D3D12_INPUT_CLASSIFICATION_PER_VERTEX_DATA, 0},
-	{"TEXCOORD", 0, DXGI_FORMAT_R32G32_FLOAT, 0, 16, D3D12_INPUT_CLASSIFICATION_PER_VERTEX_DATA, 0},
-	{"NORMAL", 0, DXGI_FORMAT_R16G16B16A16_SINT, 0, 24, D3D12_INPUT_CLASSIFICATION_PER_VERTEX_DATA, 0}
+	{ "POSITION", 0, DXGI_FORMAT_R32G32B32_FLOAT, 0, 0, D3D12_INPUT_CLASSIFICATION_PER_VERTEX_DATA, 0 },
+	{ "COLOR", 0, DXGI_FORMAT_R32_UINT, 0, 12, D3D12_INPUT_CLASSIFICATION_PER_VERTEX_DATA, 0 },
+	{ "TEXCOORD", 0, DXGI_FORMAT_R32G32_FLOAT, 0, 16, D3D12_INPUT_CLASSIFICATION_PER_VERTEX_DATA, 0 },
+	{ "NORMAL", 0, DXGI_FORMAT_R16G16B16A16_SINT, 0, 24, D3D12_INPUT_CLASSIFICATION_PER_VERTEX_DATA, 0 }
 };
 static constexpr size_t TEXTURE_LAYOUT_SIZE = 4;
 
 static constexpr D3D12_INPUT_ELEMENT_DESC COLORED_LAYOUT[] = {
-	{"POSITION", 0, DXGI_FORMAT_R32G32B32_FLOAT, 0, 0, D3D12_INPUT_CLASSIFICATION_PER_VERTEX_DATA, 0},
-	{"COLOR", 0, DXGI_FORMAT_R32_UINT, 0, 12, D3D12_INPUT_CLASSIFICATION_PER_VERTEX_DATA, 0}
+	{ "POSITION", 0, DXGI_FORMAT_R32G32B32_FLOAT, 0, 0, D3D12_INPUT_CLASSIFICATION_PER_VERTEX_DATA, 0 },
+	{ "COLOR", 0, DXGI_FORMAT_R32_UINT, 0, 12, D3D12_INPUT_CLASSIFICATION_PER_VERTEX_DATA, 0 }
 };
 static constexpr size_t COLORED_LAYOUT_SIZE = 2;
 
@@ -103,8 +103,8 @@ void DirectCamera::calculate(const double width, const double height) noexcept {
 	);
 	Matrix4D proj;
 	const double vt = 1 / std::tan(fieldOfView * 0.5); // 投影系数
-	if (projection == Perspective) {                   // 景深投影
-		const double aspectReversed = height / width;    // 反宽高比
+	if (projection == Perspective) { // 景深投影
+		const double aspectReversed = height / width; // 反宽高比
 		proj = Matrix4D(
 			aspectReversed * vt, 0, 0, 0,
 			0, vt, 0, 0,
@@ -214,6 +214,7 @@ bool DirectTextureResource::resize(unsigned int singleWidth, const unsigned int 
 		return true;
 	}
 	mapAddress = map();
+	dirtySlices.assign(size, false);
 	return false;
 }
 
@@ -244,10 +245,10 @@ void DirectTextureResource::submit(const ComPtr<ID3D12GraphicsCommandList>& comm
 	// 1. 转换状态：PSR -> CD
 	CD3DX12_RESOURCE_BARRIER barrier = CD3DX12_RESOURCE_BARRIER::Transition(defaultBuffer.Get(), D3D12_RESOURCE_STATE_PIXEL_SHADER_RESOURCE, D3D12_RESOURCE_STATE_COPY_DEST);
 	commandList->ResourceBarrier(1, &barrier);
-	const UINT64 perSubresourceSize = numRows * rowPitch; // 单个子资源占用的字节数
-	// 2. 对于每个要复制的子资源
-	// TODO(EmsiaetKadosh): 改为仅上传被修改的资源
+	const UINT64 perSubresourceSize = numRows * rowPitch;
+	// 仅上传脏切片
 	for (UINT i = 0; i < size; ++i) {
+		if (!dirtySlices[i]) continue;
 		const UINT subresource = i;
 		D3D12_TEXTURE_COPY_LOCATION dst = {}; // 目标位置：子资源索引
 		dst.pResource = defaultBuffer.Get();
@@ -262,6 +263,7 @@ void DirectTextureResource::submit(const ComPtr<ID3D12GraphicsCommandList>& comm
 		src.PlacedFootprint.Offset += i * perSubresourceSize;
 		// 执行复制（复制整个纹理）
 		commandList->CopyTextureRegion(&dst, 0, 0, 0, &src, nullptr);
+		dirtySlices[i] = false;
 	}
 	// 3. 恢复状态：CD -> PSR
 	barrier = CD3DX12_RESOURCE_BARRIER::Transition(defaultBuffer.Get(), D3D12_RESOURCE_STATE_COPY_DEST, D3D12_RESOURCE_STATE_PIXEL_SHADER_RESOURCE);
@@ -275,6 +277,7 @@ void DirectTextureResource::finalize() noexcept {
 	}
 	HBP_DX_RESET(uploadBuffer);
 	HBP_DX_RESET(defaultBuffer);
+	dirtySlices.clear();
 	status = DirectResourceStatus::Null;
 }
 
@@ -296,6 +299,7 @@ bool DirectTextureResource::fillRect(const unsigned int index, const unsigned in
 			w * sizeof(uint32_t)
 		);
 	}
+	dirtySlices[index] = true;
 
 	return true;
 }
@@ -322,14 +326,6 @@ bool DirectTextureDispatcher::isLineEmpty(Atlas& atlas, const unsigned int x, co
 	return true;
 }
 
-bool DirectTextureDispatcher::isColumnEmpty(Atlas& atlas, const unsigned int x, const unsigned int y, const unsigned int height) const noexcept {
-	const unsigned int gridSize = manager.getGridSize();
-	unsigned int end = y + height;
-	if (end > gridSize) return false;
-	end = end * gridSize + x;
-	for (unsigned int i = x + y * gridSize; i < end; i += gridSize) if (atlas.grid[i]) return false;
-	return true;
-}
 
 DirectTextureIndex DirectTextureDispatcher::newPrepare(const DirectTextureCarrier* const carrier) const noexcept {
 	const Category category = categoryOf(carrier);
@@ -407,115 +403,69 @@ bool DirectTextureDispatcher::fitForUnit(const unsigned int indexAtlas, DirectTe
 }
 
 bool DirectTextureDispatcher::fitForSpecial(const unsigned int indexAtlas, DirectTextureIndex& index, const DirectTextureCarrier* carrier) noexcept {
-	// 计算所需网格数
 	const unsigned int width = index.xGridSize;
 	const unsigned int height = index.yGridSize;
 	Atlas& atlas = atlases[indexAtlas];
-	// 检查纹理是否太大（不应该发生，但安全检查）
+
 	if (carrier->width > manager.getSpecialSize() || carrier->height > manager.getSpecialSize()) {
 		renderer.getLogger().ofNoexcept(L"Failed to fit into atlas (special); texture too large: ").error();
 		game.getRiskManager().report();
 		return false;
 	}
-	// 检查填充率阈值
-	if (atlas.fillRate != 0) { // 如果非空
-		// ReSharper disable once CppTooWideScopeInitStatement
+
+	if (atlas.fillRate != 0) {
 		const float newFillRate = static_cast<float>(atlas.usedCells + width * height) / atlas.grid.size();
-		if (newFillRate > manager.getFillThreshold()) return false; // 填充过于困难
+		if (newFillRate > manager.getFillThreshold()) return false;
 	}
 
-	const unsigned int res = carrier->width % manager.getUnitSize();
-	const bool isEdgeAvailable = res <= manager.getEdgeSize();
+	const unsigned int gridSize = manager.getGridSize();
+	const unsigned int xMax = gridSize - width;
+	const unsigned int yMax = gridSize - height;
 
-	// 查找连续空闲网格
-	const unsigned int xTarget = manager.getGridSize() - width; // x和y上的查找最大值
-	const unsigned int yTarget = manager.getGridSize() - height;
-	const unsigned int ew = width - 1, eh = height - 1;
-	unsigned int xResult, yResult;
-	if (isEdgeAvailable && width > 1 && height > 1) { // 当边界可用时，优先查找边界用法
-		// 此处做一个安全保障的unreachable筛选，如果width和height任一是1，取消边界查找，防止内存失控
-		// 边界查找时，xTarget和yTarget的值+1
-		const unsigned int ext = xTarget + 1, eyt = yTarget + 1;
-		unsigned int stacking = 0; // 行/列累计的空置区域计数
-		unsigned int startPoint = 0;
-		while (startPoint <= eyt) {
-			while (stacking < height) // 检查位于起始点(ext, startPoint)是否全空
-				if (isLineEmpty(atlas, ext, startPoint + stacking, ew)) ++stacking;
-				else {                                    // 非空
-					startPoint = startPoint + stacking + 1; // 下一行开始
-					stacking = 0;
-					break;
-				}
-			if (stacking >= height) {
-				xResult = ext;
-				yResult = startPoint;
-				index.xGridSize = ew;
-				index.yGridSize = startPoint == eyt ? eh : height;
-				index.index = indexAtlas;
-				goto ok;
+	// 逐行首次适配扫描
+	for (unsigned int y = 0; y <= yMax; ++y) {
+		for (unsigned int x = 0; x <= xMax;) {
+			if (atlas.grid[x + y * gridSize]) {
+				++x;
+				continue;
 			}
-		}
-		startPoint = 0;
-		stacking = 0;
-		while (startPoint < ext) { // 此处无需再检查ext
-			while (stacking < width)
-				if (isColumnEmpty(atlas, startPoint + stacking, eyt, eh)) ++stacking;
-				else {
-					startPoint = startPoint + stacking + 1;
-					stacking = 0;
-					break;
+
+			bool fits = true;
+			for (unsigned int dy = 0; dy < height && fits; ++dy) {
+				if (!isLineEmpty(atlas, x, y + dy, width)) {
+					fits = false;
+					// 跳到阻挡单元格之后
+					const unsigned int rowStart = x + (y + dy) * gridSize;
+					for (unsigned int dx = 1; dx < width; ++dx) {
+						if (atlas.grid[rowStart + dx]) {
+							x += dx;
+							break;
+						}
+					}
 				}
-			if (stacking >= width) {
-				xResult = startPoint;
-				yResult = eyt;
-				index.xGridSize = width;
-				index.yGridSize = eh;
-				index.index = indexAtlas;
-				goto ok;
 			}
+
+			if (fits) {
+				index.xGrid = x;
+				index.yGrid = y;
+				index.xSample = static_cast<float>(x * manager.getUnitSize()) / static_cast<float>(manager.getSpecialSize());
+				index.ySample = static_cast<float>(y * manager.getUnitSize()) / static_cast<float>(manager.getSpecialSize());
+				index.index = indexAtlas;
+				setRange(index, true);
+				atlas.usedCells += width * height;
+				updateAtlasFillRate(atlas);
+				return true;
+			}
+			++x;
 		}
 	}
-	// 常规检查空置区域
-	// 通配符覆盖卷积法
-	{
-		Vector<bool> area;
-		area.resize(width + eh * manager.getGridSize(), false); // 一维化做卷积
-		for (unsigned int i = 0; i < height; ++i) std::fill_n(area.begin() + i * manager.getGridSize(), width, true);
-		// TODO(EmsiaetKadosh): 进一步优化
-		for (unsigned int i = 0; i < atlas.grid.size() - area.size(); ++i) {
-			bool flag = true;
-			for (unsigned int j = 0; j < area.size(); ++j) {
-				if (!area[j]) continue; // 通配符
-				if (area[j + i]) {      // 需要空置时非空
-					flag = false;
-					break;
-				}
-			}
-			if (flag) { // 匹配成功
-				auto [xr, yr] = indexToXY(i);
-				xResult = xr, yResult = yr;
-				index.index = indexAtlas;
-				goto ok;
-			}
-		}
-	}
-	return false; // 查找失败
-ok:
-	index.xGrid = xResult;
-	index.yGrid = yResult;
-	index.xSample = static_cast<float>(index.xGrid * manager.getGridSize()) / static_cast<float>(manager.getSpecialSize());
-	index.ySample = static_cast<float>(index.yGrid * manager.getGridSize()) / static_cast<float>(manager.getSpecialSize());
-
-	setRange(index, true);
-	atlas.usedCells = index.xGridSize * index.yGridSize; // 边界情况会修改此二值，直接用此二值计算
-	updateAtlasFillRate(atlas);
-	return true;
+	return false;
 }
 
 void DirectTextureDispatcher::update() noexcept {}
 
 void DirectTextureDispatcher::apply(DirectTextureResource& resource) noexcept {
-	for (auto& [t, i]: indices) {
+	for (auto& [t, i] : indices) {
 		t->prepare();
 		const unsigned int* b = reinterpret_cast<const unsigned int*>(t->extraData->getBuffer());
 		if (!b) continue;
@@ -529,6 +479,14 @@ const DirectTextureIndex& DirectTextureDispatcher::getIndex(DirectTextureCarrier
 	if (iter == indices.end()) return DirectTextureIndex::ofNull();
 	return iter->second;
 }
+
+DirectTextureResourceManager::DirectTextureResourceManager(DirectRenderer& renderer, const unsigned int unit, const unsigned int special, DirectTextureManager* manager) noexcept :
+	currentScene(manager), renderer(renderer),
+	dispatcherConstant { DirectResourceBufferType::Constant, *this, renderer },
+	dispatcherPreload { DirectResourceBufferType::Preload, *this, renderer },
+	dispatcherAppend { DirectResourceBufferType::Append, *this, renderer },
+	dispatcherTemporary { DirectResourceBufferType::Temporary, *this, renderer },
+	unitSize(unit), specialSize(special), edgeSize(specialSize % unitSize), gridSize(specialSize / unitSize) { if (edgeSize != 0) renderer.getLogger().ofNoexcept(L"specialSize (", special, L") must be a multiple of unitSize (", unit, L")").error(); }
 
 // TODO(EmsiaetKadosh): prepare可能需要检查一些更多状态
 void DirectTextureResourceManager::prepareConstant(DirectTextureResource& buffer) noexcept {
@@ -583,8 +541,8 @@ bool DirectFrame::reassignDepthStencil() noexcept {
 	);
 	D3D12_CLEAR_VALUE depthOptimizedClearValue = {};
 	depthOptimizedClearValue.Format = DXGI_FORMAT_D32_FLOAT;
-	depthOptimizedClearValue.DepthStencil = {1.0f, 0};
-	const CD3DX12_HEAP_PROPERTIES properties {D3D12_HEAP_TYPE_DEFAULT};
+	depthOptimizedClearValue.DepthStencil = { 1.0f, 0 };
+	const CD3DX12_HEAP_PROPERTIES properties { D3D12_HEAP_TYPE_DEFAULT };
 	result = renderer.device->CreateCommittedResource(
 		&properties,
 		D3D12_HEAP_FLAG_NONE,
@@ -685,7 +643,7 @@ void DirectFrame::begin() noexcept(false) {
 	const CD3DX12_CPU_DESCRIPTOR_HANDLE dsvHandle(renderer.dsvHeap->GetCPUDescriptorHandleForHeapStart(), static_cast<int>(renderer.currentFrame), renderer.dsvDescriptorSize);
 	commandList->OMSetRenderTargets(1, &rtvHandle, 0, &dsvHandle);
 	// 4. 清除渲染目标
-	constexpr float clearColor[] = {0, 0, 0, 1.0f};
+	constexpr float clearColor[] = { 0, 0, 0, 1.0f };
 	commandList->ClearRenderTargetView(rtvHandle, clearColor, 0, nullptr);
 	commandList->ClearDepthStencilView(dsvHandle, D3D12_CLEAR_FLAG_DEPTH, 1.0f, 0, 0, nullptr);
 	// 5.0. 设置图形管线状态
@@ -702,7 +660,7 @@ bool DirectFrame::submitColoredVertices() noexcept {
 	if (!vertex) return true;
 	char* index = coloredIndex.map();
 	if (!index) return true;
-	for (const auto& [vertices, indices]: coloredBuffer) {
+	for (const auto& [vertices, indices] : coloredBuffer) {
 		memcpy(vertex, vertices.data(), vertices.size() * sizeof(ColoredVertex));
 		vertex += vertices.size() * sizeof(ColoredVertex);
 		memcpy(index, indices.data(), indices.size() * sizeof(unsigned int));
@@ -736,7 +694,7 @@ bool DirectFrame::submitTextureVertices() noexcept {
 	// TODO(EmsiaetKadosh): 此处需要再次处理顶点：根据具体安排以后的位置确定具体的采样区间
 	char* vertex = textureVertex.map();
 	if (!vertex) return true;
-	for (const auto& [vertices, indices]: textureBuffer) {
+	for (const auto& [vertices, indices] : textureBuffer) {
 		memcpy(vertex, vertices.data(), vertices.size() * sizeof(TextureVertex));
 		vertex += vertices.size() * sizeof(TextureVertex);
 	}
@@ -792,7 +750,7 @@ void DirectFrame::end() {
 	}
 	result = commandList->Close();
 	CrashReturnR(result, L"Failed to close command list.",);
-	ID3D12CommandList* cmdLists[] = {commandList.Get()};
+	ID3D12CommandList* cmdLists[] = { commandList.Get() };
 	renderer.commandQueue->ExecuteCommandLists(1, cmdLists);
 	// 8. 呈现交换链
 	result = renderer.swapChain->Present(1, 0);
@@ -810,7 +768,7 @@ void DirectFrame::drawColor(ColoredSet&& set) noexcept(false) {
 	assertRecording(true);
 	coloredBuffer.push_back(std::move(set));
 	auto& [vertices, indices] = coloredBuffer.back();
-	for (unsigned int& i: indices) i += actualColoredVertexCount;
+	for (unsigned int& i : indices) i += actualColoredVertexCount;
 	actualColoredVertexCount += vertices.size();
 	actualColoredIndexCount += indices.size();
 }
@@ -819,7 +777,7 @@ void DirectFrame::drawColor(const ColoredSet& set) noexcept(false) {
 	assertRecording(true);
 	coloredBuffer.push_back(set);
 	auto& [vertices, indices] = coloredBuffer.back();
-	for (unsigned int& i: indices) i += actualColoredVertexCount;
+	for (unsigned int& i : indices) i += actualColoredVertexCount;
 	actualColoredVertexCount += vertices.size();
 	actualColoredIndexCount += indices.size();
 }
@@ -955,15 +913,15 @@ bool DirectRenderer::initializeShader() noexcept {
 
 inline bool DirectRenderer::initializeRootSignature() noexcept {
 	getLogger().trace(L"Initializing root signature");
-	CD3DX12_ROOT_PARAMETER slotRootParameter[2];   // 根签名Slot列表。在着色器中可以通过slot+index获取到信息，信息储存在描述符堆中。
-	CD3DX12_STATIC_SAMPLER_DESC samplerDesc = {0}; // 采样器描述符
+	CD3DX12_ROOT_PARAMETER slotRootParameter[2]; // 根签名Slot列表。在着色器中可以通过slot+index获取到信息，信息储存在描述符堆中。
+	CD3DX12_STATIC_SAMPLER_DESC samplerDesc = { 0 }; // 采样器描述符
 
 	const CD3DX12_DESCRIPTOR_RANGE range = CD3DX12_DESCRIPTOR_RANGE(D3D12_DESCRIPTOR_RANGE_TYPE_SRV, 4, 0);
-	slotRootParameter[0].InitAsConstantBufferView(0);      // Slot 0: CBV类型，传递相机矩阵常量
+	slotRootParameter[0].InitAsConstantBufferView(0); // Slot 0: CBV类型，传递相机矩阵常量
 	slotRootParameter[1].InitAsDescriptorTable(1, &range); // Slot 1: SRV类型，用于传递纹理 TODO(EmsiaetKadosh): Deprecated ?
 	samplerDesc.Filter = D3D12_FILTER_MIN_MAG_MIP_LINEAR;
 
-	const CD3DX12_ROOT_SIGNATURE_DESC rootSigDesc {2, slotRootParameter, 1, &samplerDesc, D3D12_ROOT_SIGNATURE_FLAG_ALLOW_INPUT_ASSEMBLER_INPUT_LAYOUT}; // 用上述二者生成根签名描述符
+	const CD3DX12_ROOT_SIGNATURE_DESC rootSigDesc { 2, slotRootParameter, 1, &samplerDesc, D3D12_ROOT_SIGNATURE_FLAG_ALLOW_INPUT_ASSEMBLER_INPUT_LAYOUT }; // 用上述二者生成根签名描述符
 
 	ComPtr<ID3DBlob> serializedRootSig = nullptr;
 	ComPtr<ID3DBlob> errorBlob = nullptr;
@@ -984,7 +942,7 @@ bool DirectRenderer::initializePipelineState() noexcept {
 	psoDesc.pRootSignature = rootSignature.Get();
 	psoDesc.VS = CD3DX12_SHADER_BYTECODE(coloredVertexShader.Get());
 	psoDesc.PS = CD3DX12_SHADER_BYTECODE(coloredPixelShader.Get());
-	psoDesc.InputLayout = {COLORED_LAYOUT, COLORED_LAYOUT_SIZE};
+	psoDesc.InputLayout = { COLORED_LAYOUT, COLORED_LAYOUT_SIZE };
 	psoDesc.NumRenderTargets = 1;
 	psoDesc.RTVFormats[0] = DXGI_FORMAT_R8G8B8A8_UNORM;
 	psoDesc.RasterizerState = CD3DX12_RASTERIZER_DESC(D3D12_DEFAULT);
@@ -1004,7 +962,7 @@ bool DirectRenderer::initializePipelineState() noexcept {
 	psoDesc2.pRootSignature = rootSignature.Get();
 	psoDesc2.VS = CD3DX12_SHADER_BYTECODE(textureVertexShader.Get());
 	psoDesc2.PS = CD3DX12_SHADER_BYTECODE(texturePixelShader.Get());
-	psoDesc2.InputLayout = {TEXTURE_LAYOUT, TEXTURE_LAYOUT_SIZE};
+	psoDesc2.InputLayout = { TEXTURE_LAYOUT, TEXTURE_LAYOUT_SIZE };
 	psoDesc2.NumRenderTargets = 1;
 	psoDesc2.RTVFormats[0] = DXGI_FORMAT_R8G8B8A8_UNORM;
 	psoDesc2.RasterizerState = CD3DX12_RASTERIZER_DESC(D3D12_DEFAULT);
@@ -1040,7 +998,7 @@ bool DirectRenderer::initializeFrames() noexcept {
 	return false;
 }
 
-void DirectRenderer::finalizeFrames() noexcept { for (auto& frame: frames) frame.finalize(); }
+void DirectRenderer::finalizeFrames() noexcept { for (auto& frame : frames) frame.finalize(); }
 
 void DirectRenderer::finalizePipelineState() noexcept {
 	HBP_DX_RESET(coloredPipelineState);
@@ -1155,7 +1113,7 @@ void DirectRenderer::finalize() noexcept {
 	debugDefault();
 }
 
-void DirectRenderer::awaitAllFrames() noexcept { for (DirectFrame& frame: frames) frame.awaitFrame(); }
+void DirectRenderer::awaitAllFrames() noexcept { for (DirectFrame& frame : frames) frame.awaitFrame(); }
 
 void DirectRenderer::debugDefault() noexcept {
 	HRESULT hr = 0;
@@ -1163,7 +1121,7 @@ void DirectRenderer::debugDefault() noexcept {
 	else if (ComPtr<ID3D12InfoQueue> infoQueue; FAILED(device.As(&infoQueue))) getLogger().error(L"device as infoQueue failed");
 	else if (const UINT64 messageCount = infoQueue->GetNumStoredMessages()) {
 		for (UINT64 i = 0; i < messageCount; i++) {
-			SIZE_T messageLength = 0;                                // 获取消息大小
+			SIZE_T messageLength = 0; // 获取消息大小
 			hr = infoQueue->GetMessageW(i, nullptr, &messageLength); // 第一次调用获取长度
 			if (FAILED(hr)) {
 				getLogger().error(L"Failed to get message length");
@@ -1300,6 +1258,4 @@ inline unsigned int DirectRenderer::getHeight() const noexcept { return scissorR
 inline unsigned int DirectRenderer::getUpdatedWidth() const noexcept { return width; }
 inline unsigned int DirectRenderer::getUpdatedHeight() const noexcept { return height; }
 
-inline void DirectTextureManager::registerDefaultLoaders() noexcept {
-	registerLoader<TextureLoaderBMP>(L"bmp");
-}
+inline void DirectTextureManager::registerDefaultLoaders() noexcept { registerLoader<TextureLoaderBMP>(L"bmp"); }

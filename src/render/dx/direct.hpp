@@ -116,6 +116,7 @@ private:
 	 * 参考@code DirectTextureScene::version	@endcode。
 	 */
 	unsigned int version = 0;
+	mutable Vector<bool> dirtySlices;
 	DirectResourceStatus status = DirectResourceStatus::Null;
 	[[nodiscard]] char* map() noexcept;
 	void unmap() noexcept;
@@ -178,7 +179,6 @@ class DirectTextureDispatcher {
 	[[nodiscard]] Category categoryOf(const DirectTextureCarrier* carrier) const noexcept;
 	[[nodiscard]] std::pair<unsigned int, unsigned int> indexToXY(unsigned int index) const noexcept;
 	[[nodiscard]] bool isLineEmpty(Atlas& atlas, unsigned int x, unsigned int y, unsigned int width /* NonZero. 1~n */) const noexcept;
-	[[nodiscard]] bool isColumnEmpty(Atlas& atlas, unsigned int x, unsigned int y, unsigned int height /* NonZero. 1~n */) const noexcept;
 
 	[[nodiscard]] DirectTextureIndex newPrepare(const DirectTextureCarrier* carrier) const noexcept;
 	void newAdapt(const DirectTextureCarrier* carrier, DirectTextureIndex& index) noexcept;
@@ -208,13 +208,7 @@ class DirectTextureResourceManager {
 	bool constantOk = false;
 
 public:
-	DirectTextureResourceManager(DirectRenderer& renderer, const unsigned int unit, const unsigned int special, DirectTextureManager* manager) noexcept :
-		currentScene(manager), renderer(renderer),
-		dispatcherConstant { DirectResourceBufferType::Constant, *this, renderer },
-		dispatcherPreload { DirectResourceBufferType::Preload, *this, renderer },
-		dispatcherAppend { DirectResourceBufferType::Append, *this, renderer },
-		dispatcherTemporary { DirectResourceBufferType::Temporary, *this, renderer },
-		unitSize(unit), specialSize(special), edgeSize(specialSize % unitSize), gridSize(specialSize / unitSize) {}
+	DirectTextureResourceManager(DirectRenderer& renderer, unsigned int unit, unsigned int special, DirectTextureManager* manager) noexcept;
 
 	void prepareConstant(DirectTextureResource& buffer) noexcept;
 	void preparePreload(DirectTextureResource& buffer) noexcept;
