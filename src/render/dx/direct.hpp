@@ -270,13 +270,10 @@ struct DirectFrame {
 	unsigned long long actualTextureVertexCount = 0;
 
 	enum State : unsigned char {
-		Accept,
-		Upload,
-		Process,
-		Completed,
-		Reset,
-		Await,
-	} state = Await;
+		Ready, // 帧缓冲空闲，可开始录制
+		Recording, // CPU 正在录制命令
+		Executing, // GPU 正在执行
+	} state = Ready;
 
 	DirectFrame(DirectRenderer& renderer) noexcept :
 		renderer(renderer), constants(renderer),
@@ -297,7 +294,7 @@ struct DirectFrame {
 	bool submitTextureVertices() noexcept;
 	bool submitTextures() noexcept;
 	void end();
-	void assertStatus(State, bool strict = false) const noexcept(false);
+	void assertRecording(bool strict = false) const noexcept(false);
 
 	void drawColor(ColoredSet&&) noexcept(false);
 	void drawColor(const ColoredSet&) noexcept(false);

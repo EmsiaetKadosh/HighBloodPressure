@@ -627,11 +627,9 @@ bool DirectFrame::initialize(unsigned int index, CD3DX12_CPU_DESCRIPTOR_HANDLE& 
 }
 
 void DirectFrame::awaitFrame() noexcept {
-	if (state >= Completed) return;
-	while (state < Process) _mm_pause();
+	if (state != Executing) return;
 	renderer.awaitSignal(thisSignal);
-	// renderer.getLogger().trace(L"Signal complete (AwaitFrame): " + std::to_wstring(thisSignal));
-	state = Completed;
+	state = Ready;
 }
 
 void DirectFrame::finalize() noexcept {
@@ -668,7 +666,7 @@ void DirectFrame::debugCustom(unsigned int index) noexcept {
 
 void DirectFrame::begin() noexcept(false) {
 	awaitFrame();
-	state = Await;
+	state = Recording;
 	HRESULT result = 0;
 	// 1. 重置命令列表和分配器
 	result = commandAllocator->Reset();
@@ -693,7 +691,6 @@ void DirectFrame::begin() noexcept(false) {
 	// 5.0. 设置图形管线状态
 	commandList->SetGraphicsRootSignature(renderer.rootSignature.Get());
 	commandList->IASetPrimitiveTopology(D3D_PRIMITIVE_TOPOLOGY_TRIANGLELIST);
-	state = Accept;
 }
 
 bool DirectFrame::submitColoredVertices() noexcept {
@@ -770,7 +767,7 @@ bool DirectFrame::submitTextures() noexcept {
 }
 
 void DirectFrame::end() {
-	assertStatus(Accept, true);
+	assertRecording(true);
 	// 5. 计算相机；上传常量堆
 	{
 		char* buffer = constants.map();
@@ -787,7 +784,6 @@ void DirectFrame::end() {
 	submitColoredVertices();
 	submitTextures();
 	submitTextureVertices();
-	state = Upload;
 	HRESULT result = 0;
 	// 7. 提交命令列表
 	{
@@ -802,16 +798,16 @@ void DirectFrame::end() {
 	result = renderer.swapChain->Present(1, 0);
 	CrashReturnR(result, L"Failed to present swap chain.",);
 	thisSignal = renderer.requestSignal();
-	state = Process;
+	state = Executing;
 }
 
-void DirectFrame::assertStatus(const State expected, const bool strict) const noexcept(false) {
-	if (state == expected) return;
-	if (strict || state < expected) throw ThreadInterferenceException(L"Current state is ... but expected ...");
+void DirectFrame::assertRecording(const bool strict) const noexcept(false) {
+	if (state == Recording) [[likely]] return;
+	if (strict) throw ThreadInterferenceException(String(L"Expected [[Recording]] state but got ") + (state == Ready ? L"[[Ready]]" : L"[[Executing]]"));
 }
 
 void DirectFrame::drawColor(ColoredSet&& set) noexcept(false) {
-	assertStatus(Accept, true);
+	assertRecording(true);
 	coloredBuffer.push_back(std::move(set));
 	auto& [vertices, indices] = coloredBuffer.back();
 	for (unsigned int& i: indices) i += actualColoredVertexCount;
@@ -820,7 +816,7 @@ void DirectFrame::drawColor(ColoredSet&& set) noexcept(false) {
 }
 
 void DirectFrame::drawColor(const ColoredSet& set) noexcept(false) {
-	assertStatus(Accept, true);
+	assertRecording(true);
 	coloredBuffer.push_back(set);
 	auto& [vertices, indices] = coloredBuffer.back();
 	for (unsigned int& i: indices) i += actualColoredVertexCount;
