@@ -117,7 +117,7 @@ inline String ptrtow(const void* value) noexcept(noexcept(qwtowb16(0))) { return
 	else {
 		unsigned int i = 0;
 		while (i < 19) {
-			if (value >= Compare10[i]) break;
+			if (value < Compare10[i]) break;
 			++i;
 		}
 		while (i < 19) {

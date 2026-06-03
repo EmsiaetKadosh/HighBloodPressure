@@ -747,8 +747,8 @@ bool DirectFrame::submitTextureVertices() noexcept {
 	commandList->SetPipelineState(renderer.texturePipelineState.Get());
 	const D3D12_VERTEX_BUFFER_VIEW vertexView = {
 		.BufferLocation = textureVertex.getBuffer()->GetGPUVirtualAddress(),
-		.SizeInBytes = static_cast<unsigned int>(actualTextureVertexCount * sizeof(ColoredVertex)),
-		.StrideInBytes = sizeof(ColoredVertex)
+		.SizeInBytes = static_cast<unsigned int>(actualTextureVertexCount * sizeof(TextureVertex)),
+		.StrideInBytes = sizeof(TextureVertex)
 	};
 	commandList->IASetVertexBuffers(0, 1, &vertexView);
 	// const D3D12_INDEX_BUFFER_VIEW coloredView2 = {
