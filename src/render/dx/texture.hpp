@@ -5,6 +5,7 @@
 #include <unordered_set>
 #include <utility>
 
+#include "def.hpp"
 #include "src\using.hpp"
 
 class DirectTextureCarrier;
@@ -31,16 +32,18 @@ class DirectTextureCarrier {
 	friend class DirectTextureLoader;
 	friend class DirectTextureDispatcher;
 	friend struct DirectTextureResource;
-	String file; // align 8
+	String file;                           // align 8
 	DirectTextureLoader* loader = nullptr; // 8
 	DirectTextureCarrierExtraData* extraData = nullptr;
-	unsigned int width = 0, height = 0; // 4 + 4
+	unsigned int width = 0, height = 0;                      // 4 + 4
 	DirectTextureIndex index = DirectTextureIndex::ofNull(); // 4
 
 	enum Status : unsigned char {
-		Register,
-		Ready,
-		Uploaded
+		Register = 0,
+		Ready = 1,
+		Uploaded = 2 | Ready,
+		UploadFailed = 8 | Ready,
+		LoadFailed = 16
 	} status = Register; // 1
 
 	enum PrepareType {
@@ -56,11 +59,13 @@ class DirectTextureCarrier {
 	 */
 	[[nodiscard]] bool load(DirectTextureManager* manager) noexcept;
 	void unload() noexcept;
-	void upload() noexcept;
-	[[nodiscard]] const String& getFile() const noexcept { return file; }
-	[[nodiscard]] bool isReady() const noexcept { return status == Ready || status == Uploaded; }
-
+	void prepare() noexcept;
+	void release() noexcept;
 public:
+
+	[[nodiscard]] const String& getFile() const noexcept { return file; }
+	[[nodiscard]] bool isReady() const noexcept { return status & Ready; }
+	[[nodiscard]] bool isPrepared() const noexcept { return status & Uploaded; }
 	DirectTextureCarrier(String&& file) : file(std::move(file)) {}
 	DirectTextureCarrier(String&& file, DirectTextureLoader* loader) : file(std::move(file)), loader(loader) {}
 	~DirectTextureCarrier() noexcept = default;
@@ -77,22 +82,73 @@ public:
  */
 class DirectTextureLoader {
 protected:
+	DirectRenderer& renderer;
+
 	/**
-	 * 加载纹理。同时，加载器负责将DirectTextureCarrier的准备类型设置为对应的类型。
+	 * 加载纹理。
 	 * @param carrier 加载的纹理资源携带器
 	 * @return true - 加载成功，否则加载失败。加载失败时，不调用unload
 	 */
 	virtual bool onLoad(DirectTextureCarrier& carrier) noexcept = 0;
 	virtual void onUnload(DirectTextureCarrier& carrier) noexcept = 0;
-	virtual void onUpload(DirectTextureCarrier& carrier) noexcept = 0;
+
+	/**
+	 * 加载纹理的缓冲区。
+	 * @param carrier 被加载缓冲区的入口点
+	 * @return true - 加载成功；否则加载失败。失败时，不调用release，缓冲区不应被分配
+	 */
+	virtual bool onPrepare(DirectTextureCarrier& carrier) noexcept = 0;
+	virtual void onRelease(DirectTextureCarrier& carrier) noexcept = 0;
 	static void setTextureType(DirectTextureCarrier& carrier, const DirectTextureCarrier::PrepareType type) noexcept { carrier.type = type; }
 
 public:
+	DirectTextureLoader(DirectRenderer& renderer) noexcept : renderer(renderer) {}
 	virtual ~DirectTextureLoader() = default;
 
-	void load(DirectTextureCarrier& carrier) noexcept { if (carrier.status == DirectTextureCarrier::Register && (carrier.type = DirectTextureCarrier::Unknown, onLoad(carrier))) carrier.status = DirectTextureCarrier::Ready; }
-	void unload(DirectTextureCarrier& carrier) noexcept { if (carrier.status == DirectTextureCarrier::Ready) onUnload(carrier), carrier.status = DirectTextureCarrier::Register, carrier.type = DirectTextureCarrier::Unknown; }
-	void upload(DirectTextureCarrier& carrier) noexcept { if (carrier.status == DirectTextureCarrier::Ready) onUpload(carrier), carrier.status = DirectTextureCarrier::Uploaded; }
+	/**
+	 * 将纹理加载到入口点中
+	 * @param carrier 被加载到的入口点
+	 */
+	void load(DirectTextureCarrier& carrier) noexcept {
+		if (carrier.status != DirectTextureCarrier::Register) return;
+		carrier.type = DirectTextureCarrier::Unknown;
+		if (onLoad(carrier)) carrier.status = DirectTextureCarrier::Ready;
+		else carrier.status = DirectTextureCarrier::LoadFailed;
+	}
+
+	/**
+	 * 将纹理从入口点中卸载
+	 * @param carrier 被卸载的入口点
+	 */
+	void unload(DirectTextureCarrier& carrier) noexcept {
+		if (carrier.status & DirectTextureCarrier::Ready) {
+			onUnload(carrier);
+			carrier.status = DirectTextureCarrier::Register;
+			carrier.type = DirectTextureCarrier::Unknown;
+		}
+	}
+
+	/**
+	 * 将入口点的实际纹理加载到缓冲区中
+	 * @param carrier 需要加载缓冲区的入口点
+	 */
+	void prepare(DirectTextureCarrier& carrier) noexcept {
+		if (carrier.status != DirectTextureCarrier::Ready) return;
+		if (onPrepare(carrier)) carrier.status = DirectTextureCarrier::Uploaded;
+		else carrier.status = DirectTextureCarrier::UploadFailed;
+	}
+
+	/**
+	 * 将入口点的实际纹理从缓冲区卸载
+	 * @param carrier 需要卸载缓冲区的入口点
+	 */
+	void release(DirectTextureCarrier& carrier) noexcept {
+		if (carrier.status & DirectTextureCarrier::Uploaded) {
+			onRelease(carrier);
+			carrier.status = DirectTextureCarrier::Ready;
+		}
+	}
+
 	[[nodiscard]] virtual bool matches(const DirectTextureCarrier& carrier) const noexcept { return false; }
 };
 
@@ -105,7 +161,7 @@ class DirectTextureLoaderEntry {
 public:
 	void load(DirectTextureCarrier& carrier) const noexcept { if (loader) loader->load(carrier); }
 	void unload(DirectTextureCarrier& carrier) const noexcept { if (loader) loader->unload(carrier); }
-	void upload(DirectTextureCarrier& carrier) const noexcept { if (loader) loader->upload(carrier); }
+	void upload(DirectTextureCarrier& carrier) const noexcept { if (loader) loader->prepare(carrier); }
 };
 
 /**
@@ -119,13 +175,15 @@ class DirectTextureManager {
 	const DirectTextureEntry nullEntry;
 
 	void unregisterLoaders() noexcept {
-		for (auto& [id, loader] : loaders) delete loader;
+		for (auto& [id, loader]: loaders) delete loader;
 		loaders.clear();
 	}
 
 	DirectTextureManager(DirectRenderer& renderer) noexcept : renderer(renderer) {}
 
 public:
+	void registerDefaultLoaders() noexcept;
+
 	/**
 	 * @brief 注册纹理ID
 	 * @param id 纹理ID
@@ -157,10 +215,10 @@ public:
 	 * @param id 加载器ID
 	 * @return 0 - 成功；otherwise - 失败
 	 */
-	template <typename Loader> requires requires { new Loader(); } && std::is_base_of_v<DirectTextureLoader, Loader> // 允许模板加载器（继承者）
+	template<typename Loader> requires requires { new Loader(renderer); } && std::is_base_of_v<DirectTextureLoader, Loader> // 允许模板加载器（继承者）
 	int registerLoader(const String& id) noexcept {
 		if (loaders.contains(id)) return -1;
-		loaders.emplace(id, new Loader());
+		loaders.emplace(id, new Loader(renderer));
 		return 0;
 	}
 
@@ -176,7 +234,7 @@ public:
 	}
 
 	[[nodiscard]] DirectTextureLoaderEntry findMatchingLoader(const DirectTextureCarrier& carrier) const noexcept {
-		for (const auto& [id, loader] : loaders) if (loader->matches(carrier)) return loader;
+		for (const auto& [id, loader]: loaders) if (loader->matches(carrier)) return loader;
 		return nullptr;
 	}
 };
@@ -205,7 +263,6 @@ class DirectTextureScene {
 
 public:
 	DirectTextureScene(DirectTextureManager* manager) noexcept : manager(manager) {}
-
 	DirectTextureScene& addPreload(DirectTextureCarrier* const carrier) noexcept { return checkExistence(carrier) || ((ok ? append : preload).emplace(carrier), true), *this; }
 	DirectTextureScene& addAppend(DirectTextureCarrier* const carrier) noexcept { return checkExistence(carrier) || (append.emplace(carrier), ++version, true), *this; }
 	DirectTextureScene& addTemporary(DirectTextureCarrier* const carrier) noexcept { return checkExistence(carrier) || (temporary.emplace(carrier), true), *this; }
@@ -218,4 +275,5 @@ inline bool DirectTextureCarrier::load(DirectTextureManager* manager) noexcept {
 }
 
 inline void DirectTextureCarrier::unload() noexcept { if (loader && isReady()) loader->unload(*this); }
-inline void DirectTextureCarrier::upload() noexcept { if (loader && isReady()) loader->upload(*this); }
+inline void DirectTextureCarrier::prepare() noexcept { if (loader && isReady() && !isPrepared() && !(status & UploadFailed)) loader->prepare(*this); }
+inline void DirectTextureCarrier::release() noexcept { if (loader && isReady() && isPrepared()) loader->release(*this); }

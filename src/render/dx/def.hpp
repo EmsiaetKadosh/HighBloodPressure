@@ -4,6 +4,7 @@
 #include <vector>
 #include <sstream>
 #include "src\utils\chars.hpp"
+#include "src\utils\math.hpp"
 
 enum class DirectResourceBufferType {
 	Null,

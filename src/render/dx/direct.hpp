@@ -22,8 +22,8 @@
 using CameraMatrix = DirectX::XMFLOAT4X4;
 
 class DirectCamera {
-	Vector3D position = Vector3D(0, 0, 0);
-	Vector3D direction = Vector3D(0, 0, 1);
+	Vector3D position = Vector3D(10, 10, 10);
+	Vector3D direction = Vector3D(1, -1, -1).normalize();
 	CameraMatrix conMatrix;
 	double distance; // 相机与相机绕转中心
 	double nearestDistance = 0.1; // 近距

@@ -49,4 +49,6 @@ public:
 	void drawTexture(const DirectTextureContext& context) const;
 	void drawColor(ColoredSet&&) const noexcept(false);
 	void drawColor(const ColoredSet&) const noexcept(false);
+
+	DirectRenderer& gerDirectRenderer() const noexcept { return *renderer; }
 };

@@ -36,6 +36,7 @@ struct LogLine {
 	RenderableString body;
 	LogLine(RenderableString&& head, RenderableString&& body) noexcept : head(std::move(head)), body(std::move(body)) {}
 	[[nodiscard]] String getString() const { return head.getString() + body.getString(); }
+	LogLine(LogLine&& other) noexcept = default;
 };
 
 class DomainLogger {
@@ -89,7 +90,7 @@ class LoggerRouter {
 	mutable AtomicLock lock = {};
 	unsigned int saveCount = 0;
 
-	LoggerRouter() = default;
+	LoggerRouter() noexcept = default;
 
 public:
 	static LoggerRouter& getInstance() noexcept { return Details::getLoggerRouter(); }

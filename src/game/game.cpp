@@ -10,6 +10,7 @@
 class GameImpl final : public Game {
 	GameCrashRiskManager riskManager;
 	InteractManager interactManager;
+	TextureManager textureManager;
 	DirectRenderer renderer;
 	Renderer renderInterface { &renderer };
 	Camera cameraInterface { &renderer.getCamera() };
@@ -78,7 +79,8 @@ public:
 	void stop() noexcept override {
 		isRunning = false;
 		Logger.warn(L"Game terminated");
-		DestroyWindow(MainWindowHandle);
+		// Logger.ofNoexcept(L"DestroyWindow => ", DestroyWindow(MainWindowHandle)).debug(); 不可跨线程摧毁
+		PostMessageW(MainWindowHandle, WM_APP_TERMINATE, 0, 0);
 	}
 
 	void tick() noexcept(false) override {
@@ -169,6 +171,7 @@ public:
 
 	GameCrashRiskManager& getRiskManager() noexcept override { return riskManager; }
 	InteractManager& getInteractManager() noexcept override { return interactManager; }
+	TextureManager& getTextureManager() noexcept override { return textureManager; }
 	Renderer& getRenderer() noexcept override { return renderInterface; }
 	Camera& getCamera() noexcept override { return cameraInterface; }
 	void step() noexcept override { stp = true; }

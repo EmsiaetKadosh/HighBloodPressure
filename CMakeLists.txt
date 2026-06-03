@@ -27,7 +27,7 @@ enable_testing()
 
 add_executable(${PROJECT_NAME} main.cpp)
 target_include_directories(${PROJECT_NAME} PRIVATE ${HBP_SRC_DIR})
-target_include_directories(${PROJECT_NAME} PRIVATE "${HBP_SRC_DIR}/../DirectX-lib/include")
+target_include_directories(${PROJECT_NAME} PRIVATE "${HBP_SRC_DIR}/includes")
 add_subdirectory(src)
 
 set(CPACK_PROJECT_NAME ${PROJECT_NAME})

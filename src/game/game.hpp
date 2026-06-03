@@ -36,6 +36,7 @@ public:
 
 	virtual GameCrashRiskManager& getRiskManager() noexcept = 0;
 	virtual InteractManager& getInteractManager() noexcept = 0;
+	virtual TextureManager& getTextureManager() noexcept = 0;
 	virtual Renderer& getRenderer() noexcept = 0;
 	virtual Camera& getCamera() noexcept = 0;
 	virtual void step() noexcept = 0;

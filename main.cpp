@@ -45,6 +45,7 @@ int __stdcall wWinMain(const HINSTANCE hInstance, const HINSTANCE, [[maybe_unuse
 		game.finalize();
 	}
 	if constexpr (!SHORT_CODE_TEST) SystemFinalize(wc, hook, device);
+	system("pause");
 	return ret;
 }
 
@@ -62,8 +63,8 @@ int MessageLoop() noexcept {
 
 void ProcessRawInput(const HRAWINPUT handle, const bool front) {
 	RAWINPUT rawInput = {};
-	static unsigned int sizeofRawInput = sizeof RAWINPUT;
-	if (!GetRawInputData(handle, RID_INPUT, &rawInput, &sizeofRawInput, sizeof RAWINPUTHEADER)) return Logger.error(L"Failed to get header"), void();
+	static unsigned int sizeofRawInput = sizeof(RAWINPUT);
+	if (!GetRawInputData(handle, RID_INPUT, &rawInput, &sizeofRawInput, sizeof(RAWINPUTHEADER))) return Logger.error(L"Failed to get header"), void();
 	const bool keyDown = !(rawInput.data.keyboard.Flags & RI_KEY_BREAK);
 	if (keyDown && !front) return;
 	if (rawInput.data.keyboard.VKey == VK_SHIFT) {
@@ -81,8 +82,8 @@ void ProcessRawInput(const HRAWINPUT handle, const bool front) {
 }
 
 [[nodiscard]] inline bool SystemInitialize(WNDCLASSEX& wc, HHOOK& hook, RAWINPUTDEVICE& device, const int nShowCmd) {
-	// AllocConsole();
-	// freopen("CONOUT$", "w", stdout);
+	AllocConsole();
+	freopen("CONOUT$", "w", stdout);
 	SetConsoleOutputCP(65001);
 	SetUnhandledExceptionFilter(UnhandledExceptionFilter);
 
@@ -103,8 +104,8 @@ void ProcessRawInput(const HRAWINPUT handle, const bool front) {
 	if (!SetProcessDpiAwarenessContext(DPI_AWARENESS_CONTEXT_PER_MONITOR_AWARE)) Logger.of(L"SetProcessDpiAwarenessContext failed. LastError:", GetLastError()).log();
 	MainWindowHandle = CreateWindowExW(0, wc.lpszClassName, wc.lpszClassName, WS_VISIBLE | WS_MAXIMIZEBOX | WS_SIZEBOX, CW_USEDEFAULT, CW_USEDEFAULT, CW_USEDEFAULT, CW_USEDEFAULT, nullptr, nullptr, MainInstance, nullptr);
 #if false // 移除原有标题栏
-		constexpr MARGINS margins = {};
-		UNREFERENCED_PARAMETER(RemoveDefaultCaption(MainWindowHandle, &margins));
+	constexpr MARGINS margins = {};
+	UNREFERENCED_PARAMETER(RemoveDefaultCaption(MainWindowHandle, &margins));
 #endif
 	// SetWindowLongW(MainWindowHandle, GWL_EXSTYLE, GetWindowLongW(MainWindowHandle, GWL_EXSTYLE) | WS_EX_LAYERED);
 	// SetLayeredWindowAttributes(MainWindowHandle, 0xffffff, 0xe0, LWA_COLORKEY /* | LWA_ALPHA */);
@@ -192,7 +193,12 @@ LRESULT __stdcall WindowCallback(const HWND hwnd, const UINT msg, const WPARAM w
 			if (newWidth > 0 && newHeight > 0) game.getRenderer().setViewport(newWidth, newHeight);
 			break;
 		}
+		case WM_APP_TERMINATE:
+			Logger.ofNoexcept(L"Terminating").debug();
+			DestroyWindow(MainWindowHandle);
+			return 0;
 		case WM_DESTROY:
+			Logger.ofNoexcept(L"Destroying window").debug();
 			PostQuitMessage(0);
 			return 0;
 		default:
